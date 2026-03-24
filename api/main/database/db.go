@@ -35,6 +35,21 @@ func runMigrations() {
 	_, _ = DB.Exec("ALTER TABLE time_off_requests ADD COLUMN reason TEXT")
 	_, _ = DB.Exec("ALTER TABLE teams ADD COLUMN kace_queue_user TEXT NOT NULL DEFAULT ''")
 
+	// Create timeclock_requests table if it doesn't exist (for existing databases)
+	_, _ = DB.Exec(`CREATE TABLE IF NOT EXISTS timeclock_requests (
+		id INTEGER PRIMARY KEY AUTOINCREMENT,
+		cwid TEXT NOT NULL REFERENCES students(cwid) ON DELETE CASCADE,
+		shift_date TEXT NOT NULL,
+		start_time TEXT NOT NULL,
+		end_time TEXT NOT NULL,
+		reason TEXT NOT NULL,
+		status TEXT NOT NULL DEFAULT 'pending' CHECK (status IN ('pending', 'fixed')),
+		admin_notes TEXT NOT NULL DEFAULT '',
+		resolved_by TEXT,
+		resolved_at TEXT,
+		created_at TEXT NOT NULL DEFAULT (datetime('now'))
+	)`)
+
 	// Clean up expired date-specific time-off requests
 	result, err := DB.Exec("DELETE FROM time_off_requests WHERE effective_date IS NOT NULL AND effective_date < date('now')")
 	if err != nil {

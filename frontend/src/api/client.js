@@ -89,6 +89,12 @@ export const deleteTimeOffRequest = (id, cwid) => request("DELETE", `/time-off/$
 export const getAllTimeOffRequests = () => request("GET", "/time-off/all");
 export const adminDeleteTimeOffRequest = (id) => request("DELETE", `/time-off/admin/${id}`);
 
+// Timeclock Corrections
+export const createTimeclockRequest = (params) => request("POST", "/timeclock", params);
+export const getTimeclockByStudent = (cwid) => request("GET", `/timeclock/student/${cwid}`);
+export const getAllTimeclockRequests = () => request("GET", "/timeclock/all");
+export const resolveTimeclockRequest = (id, params) => request("PUT", `/timeclock/${id}/resolve`, params);
+
 // Badges
 export const getAllStudentBadges = () => request("GET", "/badges/student-badges");
 export const getAllBadges = () => request("GET", "/badges");

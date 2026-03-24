@@ -27,6 +27,8 @@ import {
   clearAllSchedule,
   getAllTimeOffRequests,
   adminDeleteTimeOffRequest,
+  getAllTimeclockRequests,
+  resolveTimeclockRequest,
 } from "../api/client";
 
 export default function AdminPage({ showToast }) {
@@ -42,6 +44,7 @@ export default function AdminPage({ showToast }) {
   const [studentBadges, setStudentBadges] = useState([]);
   const [locked, setLocked] = useState(false);
   const [timeOffRequests, setTimeOffRequests] = useState([]);
+  const [timeclockRequests, setTimeclockRequests] = useState([]);
   const [showClearConfirm, setShowClearConfirm] = useState(false);
   const [clearing, setClearing] = useState(false);
 
@@ -49,7 +52,7 @@ export default function AdminPage({ showToast }) {
   const fetchAll = useCallback(async () => {
     setLoading(true);
     try {
-      const [studentsData, teamsData, assignmentsData, badgesData, studentBadgesData, lockData, timeOffData] = await Promise.all([
+      const [studentsData, teamsData, assignmentsData, badgesData, studentBadgesData, lockData, timeOffData, timeclockData] = await Promise.all([
         getAllStudents(),
         getAllTeams(),
         getAllAssignments(),
@@ -57,6 +60,7 @@ export default function AdminPage({ showToast }) {
         getAllStudentBadges(),
         getScheduleLock(),
         getAllTimeOffRequests(),
+        getAllTimeclockRequests(),
       ]);
       setStudents(studentsData || []);
       setTeams(teamsData || []);
@@ -65,6 +69,7 @@ export default function AdminPage({ showToast }) {
       setStudentBadges(studentBadgesData || []);
       setLocked(lockData?.locked ?? false);
       setTimeOffRequests(timeOffData || []);
+      setTimeclockRequests(timeclockData || []);
     } catch (err) {
       console.error("Failed to load admin data:", err);
       showToast("Failed to load data", "error");
@@ -128,6 +133,7 @@ export default function AdminPage({ showToast }) {
     { key: "assignments", label: "Assignments", icon: <Icons.Grid /> },
     { key: "badges", label: "Badges", icon: <Icons.Shield /> },
     { key: "timeoff", label: "Time Off", icon: <Icons.Calendar /> },
+    { key: "timeclock", label: "Time Clock", icon: <Icons.Clock /> },
   ];
 
   return (
@@ -241,6 +247,13 @@ export default function AdminPage({ showToast }) {
       {activeTab === "timeoff" && (
         <TimeOffTab
           requests={timeOffRequests}
+          showToast={showToast}
+          onRefresh={fetchAll}
+        />
+      )}
+      {activeTab === "timeclock" && (
+        <TimeclockTab
+          requests={timeclockRequests}
           showToast={showToast}
           onRefresh={fetchAll}
         />
@@ -1472,6 +1485,223 @@ function TimeOffTab({ requests, showToast, onRefresh }) {
 }
 
 /* ------------------------------------------------------------------ */
+/*  Timeclock Tab                                                      */
+/* ------------------------------------------------------------------ */
+function formatTime12(timeStr) {
+  if (!timeStr) return "";
+  const [h, m] = timeStr.split(":");
+  const hour = parseInt(h, 10);
+  const ampm = hour >= 12 ? "PM" : "AM";
+  const h12 = hour === 0 ? 12 : hour > 12 ? hour - 12 : hour;
+  return `${h12}:${m} ${ampm}`;
+}
+
+function TimeclockTab({ requests, showToast, onRefresh }) {
+  const [search, setSearch] = useState("");
+  const [filter, setFilter] = useState("pending"); // "all" | "pending" | "fixed"
+  const [resolvingId, setResolvingId] = useState(null);
+  const [adminNotes, setAdminNotes] = useState("");
+  const [expandedId, setExpandedId] = useState(null);
+
+  const filtered = useMemo(() => {
+    let list = requests;
+
+    if (filter === "pending") {
+      list = list.filter((r) => r.status === "pending");
+    } else if (filter === "fixed") {
+      list = list.filter((r) => r.status === "fixed");
+    }
+
+    const q = search.toLowerCase().trim();
+    if (q) {
+      list = list.filter(
+        (r) =>
+          (r.student_name || "").toLowerCase().includes(q) ||
+          r.cwid.toString().includes(q) ||
+          r.reason.toLowerCase().includes(q)
+      );
+    }
+
+    return list;
+  }, [requests, search, filter]);
+
+  const pendingCount = requests.filter((r) => r.status === "pending").length;
+  const fixedCount = requests.filter((r) => r.status === "fixed").length;
+
+  const handleResolve = async (id) => {
+    setResolvingId(id);
+    try {
+      await resolveTimeclockRequest(id, { admin_notes: adminNotes });
+      showToast("Request marked as fixed", "success");
+      setAdminNotes("");
+      setExpandedId(null);
+      await onRefresh();
+    } catch {
+      showToast("Failed to resolve request", "error");
+    } finally {
+      setResolvingId(null);
+    }
+  };
+
+  return (
+    <div>
+      <div className="section-header" style={styles.sectionHeader}>
+        <div style={{ display: "flex", gap: 12, alignItems: "center", flex: 1 }}>
+          <div style={styles.searchWrap}>
+            <span style={styles.searchIcon}><Icons.Search /></span>
+            <input
+              type="text"
+              placeholder="Search by name, CWID, or reason..."
+              value={search}
+              onChange={(e) => setSearch(e.target.value)}
+              style={styles.searchInput}
+            />
+          </div>
+          <select
+            value={filter}
+            onChange={(e) => setFilter(e.target.value)}
+            style={styles.filterSelect}
+          >
+            <option value="pending">Pending ({pendingCount})</option>
+            <option value="fixed">Fixed ({fixedCount})</option>
+            <option value="all">All Requests ({requests.length})</option>
+          </select>
+        </div>
+      </div>
+
+      <div style={styles.tableWrap}>
+        <table style={styles.table}>
+          <thead>
+            <tr>
+              <th style={styles.th}>Student</th>
+              <th style={styles.th}>Date</th>
+              <th style={styles.th}>Shift Time</th>
+              <th style={styles.th}>Reason</th>
+              <th style={styles.th}>Status</th>
+              <th style={styles.th}>Submitted</th>
+              <th style={{ ...styles.th, textAlign: "right" }}>Actions</th>
+            </tr>
+          </thead>
+          <tbody>
+            {filtered.length === 0 ? (
+              <tr>
+                <td colSpan={7} style={styles.emptyRow}>
+                  No timeclock correction requests found
+                </td>
+              </tr>
+            ) : (
+              filtered.map((req) => {
+                const initial = req.student_name ? req.student_name.charAt(0).toUpperCase() : "?";
+                const isFixed = req.status === "fixed";
+                const isExpanded = expandedId === req.id;
+                return (
+                  <tr key={req.id} style={{ ...styles.tr, opacity: isFixed ? 0.6 : 1 }}>
+                    <td style={styles.td}>
+                      <div style={styles.nameCell}>
+                        <div style={styles.avatar}>{initial}</div>
+                        <div>
+                          <div style={styles.nameText}>{req.student_name}</div>
+                          <div style={styles.cwidSmall}>{req.cwid}</div>
+                        </div>
+                      </div>
+                    </td>
+                    <td style={styles.td}>
+                      <span style={{ fontWeight: 600, fontSize: 13 }}>
+                        {formatDate(req.shift_date)}
+                      </span>
+                    </td>
+                    <td style={styles.td}>
+                      <span style={{ fontSize: 13, fontFamily: "monospace" }}>
+                        {formatTime12(req.start_time)} &ndash; {formatTime12(req.end_time)}
+                      </span>
+                    </td>
+                    <td style={styles.td}>
+                      <span style={{ fontSize: 12, color: "#475569", fontStyle: "italic" }}>
+                        {req.reason}
+                      </span>
+                    </td>
+                    <td style={styles.td}>
+                      {isFixed ? (
+                        <span style={styles.tcStatusFixed}>Fixed</span>
+                      ) : (
+                        <span style={styles.tcStatusPending}>Pending</span>
+                      )}
+                      {isFixed && req.admin_notes && (
+                        <div style={{ fontSize: 11, color: "#64748B", marginTop: 4 }}>
+                          Note: {req.admin_notes}
+                        </div>
+                      )}
+                      {isFixed && req.resolved_at && (
+                        <div style={{ fontSize: 10, color: "#94A3B8", marginTop: 2 }}>
+                          {formatDate(req.resolved_at.split("T")[0] || req.resolved_at.split(" ")[0])}
+                        </div>
+                      )}
+                    </td>
+                    <td style={styles.td}>
+                      <span style={{ fontSize: 12, color: "#64748B" }}>
+                        {formatDate(req.created_at.split("T")[0] || req.created_at.split(" ")[0])}
+                      </span>
+                    </td>
+                    <td style={{ ...styles.td, textAlign: "right" }}>
+                      {!isFixed && (
+                        <div>
+                          {isExpanded ? (
+                            <div style={{ display: "flex", flexDirection: "column", gap: 6, alignItems: "flex-end" }}>
+                              <input
+                                type="text"
+                                placeholder="Admin notes (optional)"
+                                value={adminNotes}
+                                onChange={(e) => setAdminNotes(e.target.value)}
+                                style={{ ...styles.formInput, width: 180, fontSize: 12 }}
+                              />
+                              <div style={{ display: "flex", gap: 4 }}>
+                                <button
+                                  onClick={() => { setExpandedId(null); setAdminNotes(""); }}
+                                  style={{ ...styles.iconBtn, fontSize: 11, width: "auto", padding: "4px 8px" }}
+                                >
+                                  Cancel
+                                </button>
+                                <button
+                                  onClick={() => handleResolve(req.id)}
+                                  disabled={resolvingId === req.id}
+                                  style={{
+                                    ...styles.submitBtn,
+                                    fontSize: 11,
+                                    padding: "4px 10px",
+                                    opacity: resolvingId === req.id ? 0.5 : 1,
+                                  }}
+                                >
+                                  {resolvingId === req.id ? "Saving..." : "Confirm"}
+                                </button>
+                              </div>
+                            </div>
+                          ) : (
+                            <button
+                              onClick={() => setExpandedId(req.id)}
+                              style={{
+                                ...styles.submitBtn,
+                                fontSize: 11,
+                                padding: "5px 12px",
+                              }}
+                            >
+                              <Icons.Check /> Mark Fixed
+                            </button>
+                          )}
+                        </div>
+                      )}
+                    </td>
+                  </tr>
+                );
+              })
+            )}
+          </tbody>
+        </table>
+      </div>
+    </div>
+  );
+}
+
+/* ------------------------------------------------------------------ */
 /*  Styles                                                             */
 /* ------------------------------------------------------------------ */
 const styles = {
@@ -1999,5 +2229,25 @@ const styles = {
     borderRadius: 12,
     background: "#FEF3C7",
     color: "#92400E",
+  },
+
+  // Timeclock tab
+  tcStatusPending: {
+    display: "inline-block",
+    padding: "3px 10px",
+    fontSize: 11,
+    fontWeight: 700,
+    borderRadius: 12,
+    background: "#FEF3C7",
+    color: "#92400E",
+  },
+  tcStatusFixed: {
+    display: "inline-block",
+    padding: "3px 10px",
+    fontSize: 11,
+    fontWeight: 700,
+    borderRadius: 12,
+    background: "#DCFCE7",
+    color: "#16A34A",
   },
 };

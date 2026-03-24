@@ -14,7 +14,7 @@ cd api/main
 go build -o server .
 ./server                    # runs on http://127.0.0.1:8080
 ```
-The server auto-creates `helpdesk.db` on first run and runs schema migrations on startup.
+Go module name is `helpdesk-scheduler` (used in all internal imports). The server auto-creates `helpdesk.db` on first run and runs schema migrations on startup.
 
 ### Frontend (React + Vite)
 ```bash
@@ -22,8 +22,15 @@ cd frontend
 npm install
 npm run dev                 # dev server with API proxy to :8080
 npm run build               # production build to dist/
+npm run lint                # ESLint (flat config in eslint.config.js)
 ```
 Vite proxies `/api` requests to the Go backend (configured in `vite.config.js`).
+
+### Testing
+No test framework is configured for either backend or frontend. No test files exist yet.
+
+### Environment Variables
+Backend reads `api/main/.env` on startup (see `.env.example`). Keys: `KACE_HOST`, `KACE_USERNAME`, `KACE_PASSWORD` — used by the KACE ticket integration (currently stubbed).
 
 ## Architecture
 
@@ -62,7 +69,10 @@ Vite proxies `/api` requests to the Go backend (configured in `vite.config.js`).
 
 ## Known Patterns & Pitfalls
 
-- **SQLite single-writer**: concurrent writes cause "database is locked". Use sequential `for...of` loops (not `Promise.all`) for multiple write requests from the frontend.
+- **SQLite single-writer**: concurrent writes cause "database is locked". The DB is opened with `SetMaxOpenConns(1)`. Use sequential `for...of` loops (not `Promise.all`) for multiple write requests from the frontend.
 - **JWT secret regenerates on server restart**, invalidating stored tokens. The API client handles this by auto-clearing tokens and reloading on 401.
 - **`json:"omitempty"` on strings** in Go models causes empty strings to be omitted from JSON (`undefined` in JS instead of `""`). Use `COALESCE(col, '')` in SQL queries and falsy checks (`!value`) in JS.
 - **Chi route shadowing**: see routing pattern note above.
+- **ESLint `no-unused-vars`** is configured to ignore variables starting with uppercase or `_` (`varsIgnorePattern: '^[A-Z_]'`). This means imported React components that appear unused won't trigger lint errors.
+- **Frontend routing** is manual view-state in `App.jsx` (not file-based). `react-router-dom` is installed but navigation is driven by the `Nav` component setting a `currentView` state.
+- **Schema migrations** are idempotent `ALTER TABLE` statements in `database/db.go` (no version tracking). Expired date-specific time-off requests are auto-cleaned on startup.

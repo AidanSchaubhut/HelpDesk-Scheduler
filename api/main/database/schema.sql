@@ -64,3 +64,19 @@
   );
 
   INSERT OR IGNORE INTO schedule_lock (id, locked) VALUES (1, 0);
+
+  -- Timeclock correction requests
+
+  CREATE TABLE IF NOT EXISTS timeclock_requests (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      cwid TEXT NOT NULL REFERENCES students(cwid) ON DELETE CASCADE,
+      shift_date TEXT NOT NULL,
+      start_time TEXT NOT NULL,
+      end_time TEXT NOT NULL,
+      reason TEXT NOT NULL,
+      status TEXT NOT NULL DEFAULT 'pending' CHECK (status IN ('pending', 'fixed')),
+      admin_notes TEXT NOT NULL DEFAULT '',
+      resolved_by TEXT,
+      resolved_at TEXT,
+      created_at TEXT NOT NULL DEFAULT (datetime('now'))
+  );

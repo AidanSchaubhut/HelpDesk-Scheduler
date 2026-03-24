@@ -8,6 +8,7 @@ import SignUpPage from "./pages/SignUpPage";
 import SchedulePage from "./pages/SchedulePage";
 import TodayPage from "./pages/TodayPage";
 import TimeOffPage from "./pages/TimeOffPage";
+import TimeclockPage from "./pages/TimeclockPage";
 import AdminPage from "./pages/AdminPage";
 import { getCurrentDay } from "./styles/theme";
 
@@ -45,6 +46,9 @@ function AppShell() {
         )}
         {view === "timeoff" && (
           <TimeOffPage showToast={showToast} />
+        )}
+        {view === "timeclock" && (
+          <TimeclockPage showToast={showToast} />
         )}
         {view === "admin" && (
           <AdminPage showToast={showToast} />
