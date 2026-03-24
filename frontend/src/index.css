@@ -1,0 +1,150 @@
+* {
+  margin: 0;
+  padding: 0;
+  box-sizing: border-box;
+}
+
+body {
+  font-family: 'DM Sans', 'Segoe UI', system-ui, sans-serif;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+@keyframes spin {
+  to { transform: rotate(360deg); }
+}
+
+/* ---- Mobile Responsive ---- */
+@media (max-width: 768px) {
+  /* Nav: stack logo left, hamburger-style scrollable tabs */
+  .nav-bar {
+    flex-wrap: wrap !important;
+    height: auto !important;
+    padding: 8px 12px !important;
+    gap: 8px;
+  }
+  .nav-tabs {
+    order: 3;
+    width: 100%;
+    overflow-x: auto;
+    -webkit-overflow-scrolling: touch;
+    padding-bottom: 4px;
+  }
+  .nav-tabs::-webkit-scrollbar {
+    display: none;
+  }
+  .nav-tab {
+    white-space: nowrap;
+    padding: 6px 10px !important;
+    font-size: 12px !important;
+  }
+  .nav-right {
+    margin-left: auto;
+  }
+
+  /* Day Selector: compact with abbreviations */
+  .day-bar {
+    padding: 8px 12px !important;
+    gap: 4px !important;
+  }
+  .day-btn {
+    padding: 6px 0 !important;
+    flex: 1;
+    text-align: center;
+    font-size: 12px !important;
+  }
+  .day-btn .day-full { display: none !important; }
+  .day-btn .day-short { display: inline !important; }
+
+  /* App content area */
+  .app-content {
+    padding: 12px 10px 32px !important;
+  }
+
+  /* Login card */
+  .login-card {
+    width: auto !important;
+    margin: 0 16px;
+    max-width: 380px;
+  }
+  .login-form {
+    padding: 20px !important;
+  }
+  .login-header {
+    padding: 24px 20px 0 !important;
+  }
+  .login-footer {
+    padding: 12px 20px !important;
+  }
+
+  /* Admin tab bar */
+  .admin-tab-bar {
+    flex-direction: column !important;
+    align-items: stretch !important;
+    padding: 8px 12px !important;
+    gap: 8px;
+  }
+  .admin-tab-group {
+    overflow-x: auto;
+    -webkit-overflow-scrolling: touch;
+    padding-bottom: 4px;
+  }
+  .admin-tab-group::-webkit-scrollbar {
+    display: none;
+  }
+  .admin-tab {
+    white-space: nowrap;
+    padding: 6px 12px !important;
+    font-size: 12px !important;
+  }
+  .admin-actions {
+    justify-content: flex-end;
+  }
+
+  /* Admin section headers: stack search + buttons */
+  .section-header {
+    flex-direction: column !important;
+    align-items: stretch !important;
+    gap: 8px !important;
+  }
+
+  /* Admin forms: full width */
+  .admin-form {
+    flex-direction: column !important;
+  }
+  .admin-form input,
+  .admin-form select,
+  .admin-form button {
+    width: 100% !important;
+    max-width: none !important;
+  }
+
+  /* Card grids: single column */
+  .card-grid {
+    grid-template-columns: 1fr !important;
+  }
+
+  /* Schedule grids: allow horizontal scroll, reduce min-width */
+  .schedule-grid {
+    min-width: 600px !important;
+  }
+
+  /* Time Off page */
+  .timeoff-wrap {
+    padding: 16px 0 !important;
+  }
+
+  /* Today page header */
+  .today-header {
+    padding: 0 4px;
+  }
+}
+
+@media (max-width: 480px) {
+  .nav-tab span.nav-label {
+    display: none;
+  }
+  .schedule-grid {
+    min-width: 500px !important;
+  }
+}
