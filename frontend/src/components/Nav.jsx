@@ -70,7 +70,7 @@ export default function Nav({ view, onViewChange }) {
     { id: "schedule", label: "Schedule", icon: <Icons.Grid /> },
     { id: "today", label: "Today", icon: <Icons.Clock /> },
     { id: "timeoff", label: "Time Off", icon: <Icons.Calendar /> },
-    { id: "timeclock", label: "Time Clock", icon: <Icons.Clock /> },
+    { id: "timeclock", label: "Time Errors", icon: <Icons.Clock /> },
   ];
 
   if (isAdmin) {

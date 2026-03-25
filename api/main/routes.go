@@ -46,6 +46,7 @@ func RegisterRoutes() chi.Router {
 			r.Get("/teams/{id}", handlers.GetTeam)
 			r.Get("/assignments/student/{cwid}", handlers.GetAssignmentsByStudent)
 			r.Get("/badges/student-badges", handlers.GetAllStudentBadges)
+			r.Get("/team-hours", handlers.GetAllTeamHours)
 
 			// Admin-only routes
 			r.Group(func(r chi.Router) {
@@ -86,6 +87,9 @@ func RegisterRoutes() chi.Router {
 			// Timeclock admin routes
 			r.Get("/timeclock/all", handlers.GetAllTimeclockRequests)
 			r.Put("/timeclock/{id}/resolve", handlers.ResolveTimeclockRequest)
+
+			// Team hours admin routes
+			r.Put("/team-hours/{teamId}", handlers.SetTeamHours)
 
 				r.Route("/assignments", func(r chi.Router) {
 					r.Get("/", handlers.GetAllAssignments)

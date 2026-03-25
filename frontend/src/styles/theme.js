@@ -27,9 +27,75 @@ export function getCurrentDay() {
 export function slotToMinutes(slot) {
   const startStr = slot.split(" - ")[0]; // e.g. "8:00" or "1:00"
   let [h, m] = startStr.split(":").map(Number);
-  // Slots run 8 AM to 5 PM. Hours 1-5 are PM (13-17).
+  // Slots run 8 AM onwards. Hours 1-7 are PM (13-19).
   if (h < 8) h += 12;
   return h * 60 + m;
+}
+
+// Convert 24h minutes to the 12-hour slot time format (e.g. 480 → "8:00", 780 → "1:00")
+function minutesToSlotTime(minutes) {
+  let h = Math.floor(minutes / 60);
+  const m = minutes % 60;
+  if (h > 12) h -= 12;
+  return `${h}:${m.toString().padStart(2, "0")}`;
+}
+
+// Generate slot strings between startMinutes and endMinutes (24h minutes from midnight)
+// e.g. generateSlots(480, 1020) generates slots from 8:00 AM to 5:00 PM
+export function generateSlots(startMinutes, endMinutes) {
+  const slots = [];
+  for (let m = startMinutes; m < endMinutes; m += 30) {
+    slots.push(`${minutesToSlotTime(m)} - ${minutesToSlotTime(m + 30)}`);
+  }
+  return slots;
+}
+
+// Parse "HH:MM" (24h) to minutes from midnight
+export function timeToMinutes(time) {
+  const [h, m] = time.split(":").map(Number);
+  return h * 60 + m;
+}
+
+// Default team hours: 8:00 AM - 5:00 PM (480 - 1020 minutes)
+const DEFAULT_START = 480;
+const DEFAULT_END = 1020;
+
+// Build a lookup map from teamHours array: { teamId: { day: { start, end } } }
+export function buildTeamHoursMap(teamHoursArray) {
+  const map = {};
+  for (const entry of teamHoursArray) {
+    if (!map[entry.team_id]) map[entry.team_id] = {};
+    map[entry.team_id][entry.day] = {
+      start: timeToMinutes(entry.start_time),
+      end: timeToMinutes(entry.end_time),
+    };
+  }
+  return map;
+}
+
+// Get the start/end minutes for a team on a day, with defaults
+export function getTeamRange(teamHoursMap, teamId, day) {
+  const entry = teamHoursMap[teamId]?.[day];
+  return { start: entry?.start ?? DEFAULT_START, end: entry?.end ?? DEFAULT_END };
+}
+
+// Compute visible slots for a day: union of all teams' hours ranges
+export function getVisibleSlots(teamHoursMap, teams, day) {
+  let earliest = DEFAULT_START;
+  let latest = DEFAULT_END;
+  for (const team of teams) {
+    const range = getTeamRange(teamHoursMap, team.id, day);
+    if (range.start < earliest) earliest = range.start;
+    if (range.end > latest) latest = range.end;
+  }
+  return generateSlots(earliest, latest);
+}
+
+// Check if a slot falls within a team's operating hours for a day
+export function isSlotActiveForTeam(slot, teamId, day, teamHoursMap) {
+  const slotStart = slotToMinutes(slot);
+  const range = getTeamRange(teamHoursMap, teamId, day);
+  return slotStart >= range.start && slotStart < range.end;
 }
 
 // Default color palette for teams that don't have a custom color stored

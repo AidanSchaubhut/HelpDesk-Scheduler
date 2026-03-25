@@ -1,7 +1,7 @@
 import { useState, useEffect, useMemo } from "react";
 import { Icons } from "../components/Icons";
-import { TIME_SLOTS, DAYS, teamColors, slotToMinutes } from "../styles/theme";
-import { getAllTeams, getScheduleByDay, getTimeOffByDay, getAllStudentBadges } from "../api/client";
+import { DAYS, teamColors, slotToMinutes, buildTeamHoursMap, getVisibleSlots, isSlotActiveForTeam } from "../styles/theme";
+import { getAllTeams, getScheduleByDay, getTimeOffByDay, getAllStudentBadges, getAllTeamHours } from "../api/client";
 import { getKACETickets } from "../api/kace";
 
 function useCurrentMinutes() {
@@ -34,6 +34,7 @@ export default function TodayPage() {
   const [timeOff, setTimeOff] = useState([]);
   const [studentBadges, setStudentBadges] = useState([]);
   const [kaceData, setKaceData] = useState({ students: {}, teams: {} });
+  const [teamHoursMap, setTeamHoursMap] = useState({});
   const [loading, setLoading] = useState(true);
   const currentMinutes = useCurrentMinutes();
 
@@ -48,12 +49,13 @@ export default function TodayPage() {
     async function fetchData() {
       setLoading(true);
       try {
-        const [teamsData, scheduleData, timeOffData, badgesData, kaceResult] = await Promise.all([
+        const [teamsData, scheduleData, timeOffData, badgesData, kaceResult, teamHoursData] = await Promise.all([
           getAllTeams(),
           getScheduleByDay(todayName),
           getTimeOffByDay(todayName),
           getAllStudentBadges(),
           getKACETickets(),
+          getAllTeamHours(),
         ]);
         if (!cancelled) {
           setTeams(teamsData || []);
@@ -61,6 +63,7 @@ export default function TodayPage() {
           setTimeOff(timeOffData || []);
           setStudentBadges(badgesData || []);
           setKaceData(kaceResult || { students: {}, teams: {} });
+          setTeamHoursMap(buildTeamHoursMap(teamHoursData || []));
         }
       } catch (err) {
         console.error("Failed to load today data:", err);
@@ -118,6 +121,11 @@ export default function TodayPage() {
 
   const studentTickets = kaceData.students || {};
   const teamTicketTotals = kaceData.teams || {};
+
+  const visibleSlots = useMemo(
+    () => todayName ? getVisibleSlots(teamHoursMap, teams, todayName) : [],
+    [teamHoursMap, teams, todayName]
+  );
 
   const gridCols = `120px${teams.map(() => " 1fr").join("")}`;
 
@@ -187,7 +195,7 @@ export default function TodayPage() {
         </div>
 
         {/* Time slot rows */}
-        {TIME_SLOTS.map((slot, si) => {
+        {visibleSlots.map((slot, si) => {
           const slotStart = slotToMinutes(slot);
           const slotEnd = slotStart + 30;
           const showRedLine = currentMinutes >= slotStart && currentMinutes < slotEnd;
@@ -233,6 +241,14 @@ export default function TodayPage() {
                 <span style={styles.time}>{slot}</span>
               </div>
               {teams.map((team) => {
+                const active = isSlotActiveForTeam(slot, team.id, todayName, teamHoursMap);
+                if (!active) {
+                  return (
+                    <div key={team.id} style={{ ...styles.teamCell, opacity: 0.25, background: "#F8FAFC" }}>
+                      <span style={styles.empty}>&mdash;</span>
+                    </div>
+                  );
+                }
                 const students = getSlotStudents(slot, team.id);
                 const count = students.length;
                 const max = team.max_per_slot || 3;

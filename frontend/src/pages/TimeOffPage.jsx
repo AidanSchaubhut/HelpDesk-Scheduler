@@ -4,9 +4,11 @@ import {
   createTimeOffRequest,
   getTimeOffByStudent,
   deleteTimeOffRequest,
+  getAllTeams,
+  getAllTeamHours,
 } from "../api/client";
 import { Icons } from "../components/Icons";
-import { TIME_SLOTS, DAYS } from "../styles/theme";
+import { DAYS, buildTeamHoursMap, getVisibleSlots } from "../styles/theme";
 
 const styles = {
   page: {
@@ -332,6 +334,8 @@ export default function TimeOffPage({ showToast }) {
   const [loading, setLoading] = useState(true);
   const [submitting, setSubmitting] = useState(false);
   const [deletingId, setDeletingId] = useState(null);
+  const [teams, setTeams] = useState([]);
+  const [teamHoursMap, setTeamHoursMap] = useState({});
 
   // Get the minimum date (today) for the date picker
   const today = new Date().toISOString().split("T")[0];
@@ -362,7 +366,17 @@ export default function TimeOffPage({ showToast }) {
 
   useEffect(() => {
     fetchRequests();
+    async function loadTeamHours() {
+      try {
+        const [teamsData, hoursData] = await Promise.all([getAllTeams(), getAllTeamHours()]);
+        setTeams(teamsData || []);
+        setTeamHoursMap(buildTeamHoursMap(hoursData || []));
+      } catch { /* use defaults */ }
+    }
+    loadTeamHours();
   }, [fetchRequests]);
+
+  const visibleSlots = getVisibleSlots(teamHoursMap, teams, selectedDay);
 
   const toggleSlot = (slot) => {
     setSelectedSlots((prev) =>
@@ -600,7 +614,7 @@ export default function TimeOffPage({ showToast }) {
           <>
             <label style={styles.label}>Select Slots</label>
             <div style={styles.slotGrid}>
-              {TIME_SLOTS.map((slot) => (
+              {visibleSlots.map((slot) => (
                 <button
                   key={slot}
                   onClick={() => toggleSlot(slot)}

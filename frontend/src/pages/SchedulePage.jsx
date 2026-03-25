@@ -1,12 +1,13 @@
 import { useState, useEffect, useMemo } from "react";
 import { Icons } from "../components/Icons";
-import { TIME_SLOTS, teamColors } from "../styles/theme";
-import { getAllTeams, getScheduleByDay, getAllStudentBadges } from "../api/client";
+import { teamColors, buildTeamHoursMap, getVisibleSlots, isSlotActiveForTeam } from "../styles/theme";
+import { getAllTeams, getScheduleByDay, getAllStudentBadges, getAllTeamHours } from "../api/client";
 
 export default function SchedulePage({ day }) {
   const [teams, setTeams] = useState([]);
   const [schedule, setSchedule] = useState([]);
   const [studentBadges, setStudentBadges] = useState([]);
+  const [teamHoursMap, setTeamHoursMap] = useState({});
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
@@ -15,15 +16,17 @@ export default function SchedulePage({ day }) {
     async function fetchData() {
       setLoading(true);
       try {
-        const [teamsData, scheduleData, badgesData] = await Promise.all([
+        const [teamsData, scheduleData, badgesData, teamHoursData] = await Promise.all([
           getAllTeams(),
           getScheduleByDay(day),
           getAllStudentBadges(),
+          getAllTeamHours(),
         ]);
         if (!cancelled) {
           setTeams(teamsData || []);
           setSchedule(scheduleData || []);
           setStudentBadges(badgesData || []);
+          setTeamHoursMap(buildTeamHoursMap(teamHoursData || []));
         }
       } catch (err) {
         console.error("Failed to load schedule data:", err);
@@ -61,6 +64,11 @@ export default function SchedulePage({ day }) {
     });
     return map;
   }, [teams]);
+
+  const visibleSlots = useMemo(
+    () => getVisibleSlots(teamHoursMap, teams, day),
+    [teamHoursMap, teams, day]
+  );
 
   const gridCols = `120px${teams.map(() => " 1fr").join("")}`;
 
@@ -105,7 +113,7 @@ export default function SchedulePage({ day }) {
         </div>
 
         {/* Time slot rows */}
-        {TIME_SLOTS.map((slot, si) => (
+        {visibleSlots.map((slot, si) => (
           <div
             key={slot}
             style={{
@@ -118,6 +126,14 @@ export default function SchedulePage({ day }) {
               <span style={styles.time}>{slot}</span>
             </div>
             {teams.map((team) => {
+              const active = isSlotActiveForTeam(slot, team.id, day, teamHoursMap);
+              if (!active) {
+                return (
+                  <div key={team.id} style={{ ...styles.teamCell, opacity: 0.25, background: "#F8FAFC" }}>
+                    <span style={styles.empty}>&mdash;</span>
+                  </div>
+                );
+              }
               const students = getSlotStudents(slot, team.id);
               const count = students.length;
               const max = team.max_per_slot || 3;

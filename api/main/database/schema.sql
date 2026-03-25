@@ -65,6 +65,16 @@
 
   INSERT OR IGNORE INTO schedule_lock (id, locked) VALUES (1, 0);
 
+  -- Team operating hours (per team, per day)
+
+  CREATE TABLE IF NOT EXISTS team_hours (
+      team_id TEXT NOT NULL REFERENCES teams(id) ON DELETE CASCADE,
+      day TEXT NOT NULL CHECK (day IN ('Monday','Tuesday','Wednesday','Thursday','Friday')),
+      start_time TEXT NOT NULL,
+      end_time TEXT NOT NULL,
+      PRIMARY KEY (team_id, day)
+  );
+
   -- Timeclock correction requests
 
   CREATE TABLE IF NOT EXISTS timeclock_requests (

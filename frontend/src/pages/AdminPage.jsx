@@ -1,6 +1,6 @@
 import { useState, useEffect, useMemo, useCallback } from "react";
 import { Icons } from "../components/Icons";
-import { teamColors } from "../styles/theme";
+import { teamColors, DAYS } from "../styles/theme";
 import { useAuth } from "../context/AuthContext";
 import {
   getAllStudents,
@@ -29,6 +29,8 @@ import {
   adminDeleteTimeOffRequest,
   getAllTimeclockRequests,
   resolveTimeclockRequest,
+  getAllTeamHours,
+  setTeamHours,
 } from "../api/client";
 
 export default function AdminPage({ showToast }) {
@@ -45,6 +47,7 @@ export default function AdminPage({ showToast }) {
   const [locked, setLocked] = useState(false);
   const [timeOffRequests, setTimeOffRequests] = useState([]);
   const [timeclockRequests, setTimeclockRequests] = useState([]);
+  const [teamHours, setTeamHours] = useState([]);
   const [showClearConfirm, setShowClearConfirm] = useState(false);
   const [clearing, setClearing] = useState(false);
 
@@ -52,7 +55,7 @@ export default function AdminPage({ showToast }) {
   const fetchAll = useCallback(async () => {
     setLoading(true);
     try {
-      const [studentsData, teamsData, assignmentsData, badgesData, studentBadgesData, lockData, timeOffData, timeclockData] = await Promise.all([
+      const [studentsData, teamsData, assignmentsData, badgesData, studentBadgesData, lockData, timeOffData, timeclockData, teamHoursData] = await Promise.all([
         getAllStudents(),
         getAllTeams(),
         getAllAssignments(),
@@ -61,6 +64,7 @@ export default function AdminPage({ showToast }) {
         getScheduleLock(),
         getAllTimeOffRequests(),
         getAllTimeclockRequests(),
+        getAllTeamHours(),
       ]);
       setStudents(studentsData || []);
       setTeams(teamsData || []);
@@ -70,6 +74,7 @@ export default function AdminPage({ showToast }) {
       setLocked(lockData?.locked ?? false);
       setTimeOffRequests(timeOffData || []);
       setTimeclockRequests(timeclockData || []);
+      setTeamHours(teamHoursData || []);
     } catch (err) {
       console.error("Failed to load admin data:", err);
       showToast("Failed to load data", "error");
@@ -222,6 +227,7 @@ export default function AdminPage({ showToast }) {
         <TeamsTab
           teams={teams}
           assignments={assignments}
+          teamHours={teamHours}
           showToast={showToast}
           onRefresh={fetchAll}
         />
@@ -590,7 +596,111 @@ function KaceQueueInput({ teamId, value, onSave, showToast }) {
   );
 }
 
-function TeamsTab({ teams, assignments, showToast, onRefresh }) {
+function TeamHoursEditor({ teamId, teamHours, showToast, onRefresh }) {
+  const [expanded, setExpanded] = useState(false);
+  const [saving, setSaving] = useState(false);
+
+  // Build current hours for this team from the teamHours array
+  const currentHours = useMemo(() => {
+    const map = {};
+    teamHours.filter((h) => h.team_id === teamId).forEach((h) => {
+      map[h.day] = { start: h.start_time, end: h.end_time };
+    });
+    return map;
+  }, [teamHours, teamId]);
+
+  // Local editable state initialized from current hours
+  const [hours, setHours] = useState({});
+
+  useEffect(() => {
+    const h = {};
+    DAYS.forEach((day) => {
+      h[day] = currentHours[day] || { start: "08:00", end: "17:00" };
+    });
+    setHours(h);
+  }, [currentHours]);
+
+  const updateHour = (day, field, value) => {
+    setHours((prev) => ({ ...prev, [day]: { ...prev[day], [field]: value } }));
+  };
+
+  const handleSave = async () => {
+    const entries = DAYS.map((day) => ({
+      day,
+      start_time: hours[day]?.start || "08:00",
+      end_time: hours[day]?.end || "17:00",
+    }));
+    setSaving(true);
+    try {
+      await setTeamHours(teamId, entries);
+      showToast("Team hours updated", "success");
+      await onRefresh();
+    } catch (err) {
+      showToast("Failed to save hours: " + err.message, "error");
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  // Check if current hours differ from defaults
+  const hasCustomHours = teamHours.some((h) => h.team_id === teamId);
+
+  return (
+    <div style={{ borderTop: "1px solid #F1F5F9", paddingTop: 12, marginTop: 4 }}>
+      <button
+        onClick={() => setExpanded(!expanded)}
+        style={{
+          display: "flex", alignItems: "center", gap: 6,
+          background: "none", border: "none", cursor: "pointer",
+          fontSize: 12, fontWeight: 700, color: "#64748B", padding: 0,
+        }}
+      >
+        <Icons.Clock />
+        Operating Hours
+        {hasCustomHours && (
+          <span style={{
+            display: "inline-block", width: 6, height: 6, borderRadius: "50%",
+            background: "#7C3AED", marginLeft: 2,
+          }} />
+        )}
+        <span style={{ transform: expanded ? "rotate(180deg)" : "rotate(0deg)", transition: "transform 0.15s", display: "flex" }}>
+          <Icons.ChevronDown />
+        </span>
+      </button>
+      {expanded && (
+        <div style={{ marginTop: 10, display: "flex", flexDirection: "column", gap: 6 }}>
+          {DAYS.map((day) => (
+            <div key={day} style={{ display: "flex", alignItems: "center", gap: 8, fontSize: 12 }}>
+              <span style={{ width: 30, fontWeight: 600, color: "#475569" }}>{day.slice(0, 3)}</span>
+              <input
+                type="time"
+                value={hours[day]?.start || "08:00"}
+                onChange={(e) => updateHour(day, "start", e.target.value)}
+                style={{ ...styles.formInput, fontSize: 12, padding: "4px 6px", width: 100 }}
+              />
+              <span style={{ color: "#94A3B8" }}>to</span>
+              <input
+                type="time"
+                value={hours[day]?.end || "17:00"}
+                onChange={(e) => updateHour(day, "end", e.target.value)}
+                style={{ ...styles.formInput, fontSize: 12, padding: "4px 6px", width: 100 }}
+              />
+            </div>
+          ))}
+          <button
+            onClick={handleSave}
+            disabled={saving}
+            style={{ ...styles.submitBtn, fontSize: 11, padding: "5px 12px", alignSelf: "flex-start", marginTop: 4, opacity: saving ? 0.6 : 1 }}
+          >
+            {saving ? "Saving..." : "Save Hours"}
+          </button>
+        </div>
+      )}
+    </div>
+  );
+}
+
+function TeamsTab({ teams, assignments, teamHours, showToast, onRefresh }) {
   const [showForm, setShowForm] = useState(false);
   const [formName, setFormName] = useState("");
   const [formId, setFormId] = useState("");
@@ -789,6 +899,12 @@ function TeamsTab({ teams, assignments, showToast, onRefresh }) {
                     showToast={showToast}
                   />
                 </div>
+                <TeamHoursEditor
+                  teamId={team.id}
+                  teamHours={teamHours}
+                  showToast={showToast}
+                  onRefresh={onRefresh}
+                />
               </div>
             </div>
           );

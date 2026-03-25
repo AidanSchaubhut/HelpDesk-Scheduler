@@ -8,9 +8,10 @@ import {
   signUpForSlot,
   removeFromSlot,
   autofillFromDay,
+  getAllTeamHours,
 } from "../api/client";
 import { Icons } from "../components/Icons";
-import { TIME_SLOTS, DAYS, teamColors } from "../styles/theme";
+import { DAYS, teamColors, buildTeamHoursMap, getVisibleSlots, isSlotActiveForTeam } from "../styles/theme";
 
 export default function SignUpPage({ day, showToast }) {
   const { user } = useAuth();
@@ -28,6 +29,7 @@ export default function SignUpPage({ day, showToast }) {
   const [autofilling, setAutofilling] = useState(false);
   const [showClearConfirm, setShowClearConfirm] = useState(false);
   const [clearing, setClearing] = useState(false);
+  const [teamHoursMap, setTeamHoursMap] = useState({});
 
   // Stable fetch function for schedule data
   const fetchSchedule = useCallback(async () => {
@@ -50,12 +52,13 @@ export default function SignUpPage({ day, showToast }) {
       setShowAutofillConfirm(false);
 
       try {
-        const [teamsData, scheduleData, assignmentsData, lockData] =
+        const [teamsData, scheduleData, assignmentsData, lockData, teamHoursData] =
           await Promise.all([
             getAllTeams(),
             getScheduleByDay(day),
             getAssignmentsByStudent(user.cwid),
             getScheduleLock(),
+            getAllTeamHours(),
           ]);
 
         if (cancelled) return;
@@ -64,6 +67,7 @@ export default function SignUpPage({ day, showToast }) {
         setSchedule(scheduleData || []);
         setAssignments(assignmentsData || []);
         setLocked(lockData?.locked ?? false);
+        setTeamHoursMap(buildTeamHoursMap(teamHoursData || []));
       } catch {
         if (!cancelled) {
           showToast("Failed to load schedule data", "error");
@@ -133,9 +137,11 @@ export default function SignUpPage({ day, showToast }) {
     );
   };
 
+  const visibleSlots = getVisibleSlots(teamHoursMap, teams, day);
+
   const myShifts = [];
   teams.forEach((team) => {
-    TIME_SLOTS.forEach((slot) => {
+    visibleSlots.forEach((slot) => {
       if (isSignedUp(team.id, slot)) {
         myShifts.push({ slot, team });
       }
@@ -462,7 +468,7 @@ export default function SignUpPage({ day, showToast }) {
         </div>
 
         {/* Rows */}
-        {TIME_SLOTS.map((slot, slotIdx) => {
+        {visibleSlots.map((slot, slotIdx) => {
           const isExpanded = expandedSlot === slot;
           return (
             <div key={slot}>
@@ -496,14 +502,34 @@ export default function SignUpPage({ day, showToast }) {
                 {/* Team cells */}
                 {teams.map((team, teamIdx) => {
                   const colors = teamColors(team.color, teamIdx);
+                  const active = isSlotActiveForTeam(slot, team.id, day, teamHoursMap);
                   const count = getSlotCount(team.id, slot);
                   const full = count >= team.max_per_slot;
                   const mine = isSignedUp(team.id, slot);
                   const isAssigned = assignedTeamIds.has(team.id);
                   const disabled =
-                    locked || !isAssigned || (full && !mine);
+                    locked || !isAssigned || !active || (full && !mine);
                   const isToggling =
                     togglingSlot === `${team.id}|${slot}`;
+
+                  if (!active) {
+                    return (
+                      <div key={team.id} style={styles.gridCell}>
+                        <div style={{
+                          ...styles.slotBtn,
+                          background: "#F1F5F9",
+                          borderColor: "#E2E8F0",
+                          opacity: 0.3,
+                          cursor: "default",
+                          display: "flex",
+                          alignItems: "center",
+                          justifyContent: "center",
+                        }}>
+                          <span style={{ color: "#94A3B8", fontSize: 11 }}>&mdash;</span>
+                        </div>
+                      </div>
+                    );
+                  }
 
                   return (
                     <div key={team.id} style={styles.gridCell}>
