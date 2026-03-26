@@ -50,10 +50,16 @@ func main() {
 
 	r := RegisterRoutes()
 
-	// Serve frontend static files from ./dist (production build)
-	// For any non-/api route, serve the file if it exists, otherwise serve index.html (SPA fallback)
-	distDir := "./dist"
-	if _, err := os.Stat(distDir); err == nil {
+	// Serve frontend static files (production build)
+	// Checks ./dist first (if dist/ is copied next to the exe), then ../../frontend/dist (repo layout)
+	distDir := ""
+	for _, candidate := range []string{"./dist", "../../frontend/dist"} {
+		if _, err := os.Stat(candidate); err == nil {
+			distDir = candidate
+			break
+		}
+	}
+	if distDir != "" {
 		fs := http.FileServer(http.Dir(distDir))
 		r.NotFound(func(w http.ResponseWriter, req *http.Request) {
 			// Try to serve the file directly (JS, CSS, images, etc.)
