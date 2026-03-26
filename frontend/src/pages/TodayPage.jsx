@@ -133,21 +133,23 @@ export default function TodayPage() {
     [teamHoursMap, teams, todayName]
   );
 
-  // Build unique students scheduled per team today
+  // Build students scheduled for the current time slot per team
   const teamRoster = useMemo(() => {
-    const map = {};
-    for (const entry of schedule) {
-      if (!map[entry.team_id]) map[entry.team_id] = new Map();
-      if (!map[entry.team_id].has(entry.cwid)) {
-        map[entry.team_id].set(entry.cwid, entry.student_name);
-      }
-    }
+    // Find the slot that contains the current time
+    const currentSlot = visibleSlots.find((slot) => {
+      const start = slotToMinutes(slot);
+      return currentMinutes >= start && currentMinutes < start + 30;
+    });
+    if (!currentSlot) return {};
+
     const result = {};
-    for (const [teamId, nameMap] of Object.entries(map)) {
-      result[teamId] = Array.from(nameMap.entries()).map(([cwid, name]) => ({ cwid, name }));
+    for (const entry of schedule) {
+      if (entry.slot !== currentSlot) continue;
+      if (!result[entry.team_id]) result[entry.team_id] = [];
+      result[entry.team_id].push({ cwid: entry.cwid, name: entry.student_name });
     }
     return result;
-  }, [schedule]);
+  }, [schedule, visibleSlots, currentMinutes]);
 
   const gridCols = `120px${teams.map(() => " 1fr").join("")}`;
 
