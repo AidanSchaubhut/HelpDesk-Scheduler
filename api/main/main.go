@@ -50,6 +50,29 @@ func main() {
 
 	r := RegisterRoutes()
 
-	fmt.Println("Server running on http://localhost:8080")
-	log.Fatal(http.ListenAndServe("127.0.0.1:8080", r))
+	// Serve frontend static files from ./dist (production build)
+	// For any non-/api route, serve the file if it exists, otherwise serve index.html (SPA fallback)
+	distDir := "./dist"
+	if _, err := os.Stat(distDir); err == nil {
+		fs := http.FileServer(http.Dir(distDir))
+		r.NotFound(func(w http.ResponseWriter, req *http.Request) {
+			// Try to serve the file directly (JS, CSS, images, etc.)
+			path := distDir + req.URL.Path
+			if _, err := os.Stat(path); err == nil {
+				fs.ServeHTTP(w, req)
+				return
+			}
+			// SPA fallback: serve index.html for all other routes
+			http.ServeFile(w, req, distDir+"/index.html")
+		})
+		fmt.Println("Serving frontend from ./dist")
+	}
+
+	port := os.Getenv("PORT")
+	if port == "" {
+		port = "80"
+	}
+	addr := "0.0.0.0:" + port
+	fmt.Printf("Server running on http://%s\n", addr)
+	log.Fatal(http.ListenAndServe(addr, r))
 }

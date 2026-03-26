@@ -79,7 +79,13 @@ export default function TodayPage() {
     }
 
     fetchData();
-    return () => { cancelled = true; };
+
+    // Auto-refresh every 60 seconds while this component is mounted
+    const interval = setInterval(() => {
+      if (!document.hidden) fetchData();
+    }, 60000);
+
+    return () => { cancelled = true; clearInterval(interval); };
   }, [todayName]);
 
   // Time-off lookups
