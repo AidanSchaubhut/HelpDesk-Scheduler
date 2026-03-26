@@ -117,6 +117,10 @@ func ClearAllSchedule(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	// Also reset time-off requests and attendance points (quarterly reset)
+	database.DB.Exec("DELETE FROM time_off_requests")
+	database.DeleteAllAttendancePoints()
+
 	w.Header().Set("Content-Type", "application/json")
 	json.NewEncoder(w).Encode(map[string]int64{"deleted": deleted})
 }

@@ -53,6 +53,9 @@
       slot TEXT,  -- NULL means full day
       effective_date TEXT,  -- NULL means recurring every week; YYYY-MM-DD means one-time
       reason TEXT,  -- optional reason for the request
+      status TEXT NOT NULL DEFAULT 'pending' CHECK (status IN ('pending', 'excused', 'unexcused')),
+      reviewed_by TEXT REFERENCES students(cwid) ON DELETE SET NULL,
+      reviewed_at TEXT,
       created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP
   );
 
@@ -73,6 +76,17 @@
       start_time TEXT NOT NULL,
       end_time TEXT NOT NULL,
       PRIMARY KEY (team_id, day)
+  );
+
+  -- Attendance points
+
+  CREATE TABLE IF NOT EXISTS attendance_points (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      cwid TEXT NOT NULL REFERENCES students(cwid) ON DELETE CASCADE,
+      points REAL NOT NULL,
+      reason TEXT NOT NULL,
+      given_by TEXT REFERENCES students(cwid) ON DELETE SET NULL,
+      created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP
   );
 
   -- Timeclock correction requests

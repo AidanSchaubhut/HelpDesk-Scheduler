@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect, useCallback, useMemo } from "react";
 import { useAuth } from "../context/AuthContext";
 import {
   createTimeOffRequest,
@@ -6,6 +6,7 @@ import {
   deleteTimeOffRequest,
   getAllTeams,
   getAllTeamHours,
+  getMyPoints,
 } from "../api/client";
 import { Icons } from "../components/Icons";
 import { DAYS, buildTeamHoursMap, getVisibleSlots } from "../styles/theme";
@@ -281,29 +282,45 @@ function formatDate(dateStr) {
   return `${parseInt(m)}/${parseInt(d)}/${y}`;
 }
 
-function RequestRow({ req, deletingId, onDelete }) {
+function groupByReason(reqList) {
+  const map = new Map();
+  for (const r of reqList) {
+    const key = r.reason || "";
+    if (!map.has(key)) {
+      map.set(key, { ids: [r.id], slots: r.slot ? [r.slot] : [], reason: r.reason });
+    } else {
+      const g = map.get(key);
+      g.ids.push(r.id);
+      if (r.slot) g.slots.push(r.slot);
+    }
+  }
+  return Array.from(map.values());
+}
+
+function RequestRow({ group, deletingId, onDelete }) {
+  const deleteKey = group.ids.join(",");
+  const isDeleting = deletingId === deleteKey;
+
+  const timeLabel = group.slots.length === 0
+    ? <span style={styles.fullDayBadge}>Full Day</span>
+    : <><Icons.Clock /> {group.slots[0].split(" - ")[0]} &ndash; {group.slots[group.slots.length - 1].split(" - ")[1]}</>;
+
   return (
     <div style={styles.requestRow}>
       <div style={{ flex: 1 }}>
         <span style={styles.requestSlot}>
-          {req.slot === "" || req.slot === null ? (
-            <span style={styles.fullDayBadge}>Full Day</span>
-          ) : (
-            <>
-              <Icons.Clock /> {req.slot}
-            </>
-          )}
+          {timeLabel}
         </span>
-        {req.reason && (
-          <div style={styles.reasonText}>{req.reason}</div>
+        {group.reason && (
+          <div style={styles.reasonText}>{group.reason}</div>
         )}
       </div>
       <button
-        onClick={() => onDelete(req.id)}
-        disabled={deletingId === req.id}
+        onClick={() => onDelete(group.ids)}
+        disabled={isDeleting}
         style={{
           ...styles.deleteBtn,
-          opacity: deletingId === req.id ? 0.4 : 1,
+          opacity: isDeleting ? 0.4 : 1,
         }}
         title="Remove request"
         onMouseEnter={(e) => {
@@ -336,6 +353,7 @@ export default function TimeOffPage({ showToast }) {
   const [deletingId, setDeletingId] = useState(null);
   const [teams, setTeams] = useState([]);
   const [teamHoursMap, setTeamHoursMap] = useState({});
+  const [myPoints, setMyPoints] = useState(null);
 
   // Get the minimum date (today) for the date picker
   const today = new Date().toISOString().split("T")[0];
@@ -374,6 +392,7 @@ export default function TimeOffPage({ showToast }) {
       } catch { /* use defaults */ }
     }
     loadTeamHours();
+    getMyPoints().then((data) => setMyPoints(data)).catch(() => {});
   }, [fetchRequests]);
 
   const visibleSlots = getVisibleSlots(teamHoursMap, teams, selectedDay);
@@ -466,11 +485,14 @@ export default function TimeOffPage({ showToast }) {
     }
   };
 
-  const handleDelete = async (id) => {
+  const handleDelete = async (ids) => {
     if (!user?.cwid) return;
-    setDeletingId(id);
+    const deleteKey = ids.join(",");
+    setDeletingId(deleteKey);
     try {
-      await deleteTimeOffRequest(id, user.cwid);
+      for (const id of ids) {
+        await deleteTimeOffRequest(id, user.cwid);
+      }
       showToast("Time off request removed", "success");
       await fetchRequests();
     } catch {
@@ -497,6 +519,20 @@ export default function TimeOffPage({ showToast }) {
     groupedDated[r.effective_date].push(r);
   });
   const sortedDates = Object.keys(groupedDated).sort();
+
+  // Count grouped requests by status (group by day+date+reason = one logical request)
+  const statusCounts = useMemo(() => {
+    const seen = new Set();
+    const counts = { pending: 0, excused: 0, unexcused: 0 };
+    for (const r of requests) {
+      const key = `${r.day}|${r.effective_date || ""}|${r.reason || ""}`;
+      if (seen.has(key)) continue;
+      seen.add(key);
+      const status = r.status || "pending";
+      if (counts[status] !== undefined) counts[status]++;
+    }
+    return counts;
+  }, [requests]);
 
   const hasRequests = recurringRequests.length > 0 || dateRequests.length > 0;
 
@@ -660,11 +696,102 @@ export default function TimeOffPage({ showToast }) {
         </button>
       </div>
 
+      {/* Attendance Points */}
+      {myPoints && (
+        <div style={styles.card}>
+          <h2 style={styles.sectionHeader}>
+            <Icons.AlertCircle /> Attendance Points
+          </h2>
+          <div style={{
+            display: "flex",
+            gap: 16,
+            alignItems: "center",
+            marginBottom: myPoints.history.length > 0 ? 12 : 0,
+            padding: "12px 14px",
+            backgroundColor: myPoints.total_points >= 7 ? "#FEF2F2" : myPoints.total_points >= 3 ? "#FFFBEB" : "#F0FDF4",
+            borderRadius: 8,
+            border: `1px solid ${myPoints.total_points >= 7 ? "#FECACA" : myPoints.total_points >= 3 ? "#FDE68A" : "#BBF7D0"}`,
+          }}>
+            <div style={{ textAlign: "center" }}>
+              <div style={{
+                fontSize: 28,
+                fontWeight: 700,
+                color: myPoints.total_points >= 7 ? "#DC2626" : myPoints.total_points >= 3 ? "#D97706" : "#16A34A",
+              }}>
+                {myPoints.total_points}
+              </div>
+              <div style={{ fontSize: 11, color: "#64748B", fontWeight: 500 }}>POINTS</div>
+            </div>
+            <div>
+              <div style={{
+                fontSize: 14,
+                fontWeight: 600,
+                color: myPoints.total_points >= 7 ? "#991B1B" : myPoints.total_points >= 3 ? "#92400E" : "#166534",
+              }}>
+                {myPoints.discipline_level}
+              </div>
+              <div style={{ fontSize: 12, color: "#64748B", marginTop: 2 }}>
+                Points reset each quarter
+              </div>
+            </div>
+          </div>
+          {myPoints.history.length > 0 && (
+            <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
+              {myPoints.history.map((p) => (
+                <div key={p.id} style={{
+                  display: "flex",
+                  justifyContent: "space-between",
+                  alignItems: "center",
+                  padding: "8px 12px",
+                  backgroundColor: "#fff",
+                  borderRadius: 6,
+                  border: "1px solid #E2E8F0",
+                  fontSize: 13,
+                }}>
+                  <div style={{ flex: 1 }}>
+                    <span style={{ fontWeight: 600, color: "#DC2626", marginRight: 8 }}>+{p.points}</span>
+                    <span style={{ color: "#475569", fontStyle: "italic" }}>{p.reason}</span>
+                  </div>
+                  <span style={{ fontSize: 11, color: "#94A3B8" }}>
+                    {p.created_at ? new Date(p.created_at + "Z").toLocaleDateString() : ""}
+                  </span>
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+      )}
+
       {/* Existing Requests */}
       <div style={styles.card}>
         <h2 style={styles.sectionHeader}>
           <Icons.Calendar /> Your Requests
         </h2>
+
+        {hasRequests && !loading && (
+          <div style={{
+            display: "flex",
+            gap: 12,
+            marginBottom: 16,
+            padding: "10px 14px",
+            backgroundColor: "#F8FAFC",
+            borderRadius: 8,
+            border: "1px solid #E2E8F0",
+            fontSize: 13,
+          }}>
+            <span style={{ color: "#854D0E", fontWeight: 600 }}>
+              {statusCounts.pending} Pending
+            </span>
+            <span style={{ color: "#CBD5E1" }}>|</span>
+            <span style={{ color: "#166534", fontWeight: 600 }}>
+              {statusCounts.excused} Excused
+            </span>
+            <span style={{ color: "#CBD5E1" }}>|</span>
+            <span style={{ color: "#991B1B", fontWeight: 600 }}>
+              {statusCounts.unexcused} Unexcused
+            </span>
+          </div>
+        )}
 
         {loading ? (
           <p style={styles.loadingText}>Loading requests...</p>
@@ -691,10 +818,10 @@ export default function TimeOffPage({ showToast }) {
                     <div style={styles.dayGroupHeader}>
                       <Icons.Calendar /> {day}
                     </div>
-                    {dayRequests.map((req) => (
+                    {groupByReason(dayRequests).map((grp) => (
                       <RequestRow
-                        key={req.id}
-                        req={req}
+                        key={grp.ids.join(",")}
+                        group={grp}
                         deletingId={deletingId}
                         onDelete={handleDelete}
                       />
@@ -715,10 +842,10 @@ export default function TimeOffPage({ showToast }) {
                     <div style={styles.dayGroupHeader}>
                       <Icons.Calendar /> {formatDate(date)} ({groupedDated[date][0].day})
                     </div>
-                    {groupedDated[date].map((req) => (
+                    {groupByReason(groupedDated[date]).map((grp) => (
                       <RequestRow
-                        key={req.id}
-                        req={req}
+                        key={grp.ids.join(",")}
+                        group={grp}
                         deletingId={deletingId}
                         onDelete={handleDelete}
                       />

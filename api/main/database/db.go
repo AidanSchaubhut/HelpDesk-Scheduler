@@ -33,6 +33,9 @@ func runMigrations() {
 	// Add columns if they don't exist (for existing databases)
 	_, _ = DB.Exec("ALTER TABLE time_off_requests ADD COLUMN effective_date TEXT")
 	_, _ = DB.Exec("ALTER TABLE time_off_requests ADD COLUMN reason TEXT")
+	_, _ = DB.Exec("ALTER TABLE time_off_requests ADD COLUMN status TEXT NOT NULL DEFAULT 'pending'")
+	_, _ = DB.Exec("ALTER TABLE time_off_requests ADD COLUMN reviewed_by TEXT")
+	_, _ = DB.Exec("ALTER TABLE time_off_requests ADD COLUMN reviewed_at TEXT")
 	_, _ = DB.Exec("ALTER TABLE teams ADD COLUMN kace_queue_user TEXT NOT NULL DEFAULT ''")
 
 	// Create team_hours table if it doesn't exist (for existing databases)
@@ -57,6 +60,16 @@ func runMigrations() {
 		resolved_by TEXT,
 		resolved_at TEXT,
 		created_at TEXT NOT NULL DEFAULT (datetime('now'))
+	)`)
+
+	// Create attendance_points table if it doesn't exist (for existing databases)
+	_, _ = DB.Exec(`CREATE TABLE IF NOT EXISTS attendance_points (
+		id INTEGER PRIMARY KEY AUTOINCREMENT,
+		cwid TEXT NOT NULL REFERENCES students(cwid) ON DELETE CASCADE,
+		points REAL NOT NULL,
+		reason TEXT NOT NULL,
+		given_by TEXT REFERENCES students(cwid) ON DELETE SET NULL,
+		created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP
 	)`)
 
 	// Clean up expired date-specific time-off requests

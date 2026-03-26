@@ -36,6 +36,9 @@ func RegisterRoutes() chi.Router {
 				r.Delete("/{id}/{cwid}", handlers.DeleteTimeOffRequest)
 			})
 
+			// Attendance points (student view)
+			r.Get("/attendance-points/me", handlers.GetMyPoints)
+
 			// Timeclock correction requests
 			r.Post("/timeclock", handlers.CreateTimeclockRequest)
 			r.Get("/timeclock/student/{cwid}", handlers.GetTimeclockByStudent)
@@ -83,10 +86,18 @@ func RegisterRoutes() chi.Router {
 			// shadowing the authenticated /time-off subrouter above
 			r.Get("/time-off/all", handlers.GetAllTimeOffRequests)
 			r.Delete("/time-off/admin/{id}", handlers.AdminDeleteTimeOffRequest)
+			r.Post("/time-off/admin/{id}/status", handlers.UpdateTimeOffStatus)
+			r.Get("/time-off/admin/absences", handlers.GetAbsenceCounts)
 
 			// Timeclock admin routes
 			r.Get("/timeclock/all", handlers.GetAllTimeclockRequests)
 			r.Put("/timeclock/{id}/resolve", handlers.ResolveTimeclockRequest)
+
+			// Attendance points admin routes
+			r.Post("/attendance-points", handlers.CreateAttendancePoint)
+			r.Get("/attendance-points/all", handlers.GetAllAttendancePoints)
+			r.Get("/attendance-points/summary", handlers.GetAllPointsSummary)
+			r.Delete("/attendance-points/clear", handlers.DeleteAllAttendancePoints)
 
 			// Team hours admin routes
 			r.Put("/team-hours/{teamId}", handlers.SetTeamHours)

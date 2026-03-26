@@ -88,6 +88,15 @@ export const getTimeOffByDay = (day) => request("GET", `/time-off/day/${day}`);
 export const deleteTimeOffRequest = (id, cwid) => request("DELETE", `/time-off/${id}/${cwid}`);
 export const getAllTimeOffRequests = () => request("GET", "/time-off/all");
 export const adminDeleteTimeOffRequest = (id) => request("DELETE", `/time-off/admin/${id}`);
+export const updateTimeOffStatus = (id, status) => request("POST", `/time-off/admin/${id}/status`, { status });
+export const getAbsenceCounts = () => request("GET", "/time-off/admin/absences");
+
+// Attendance Points
+export const getMyPoints = () => request("GET", "/attendance-points/me");
+export const createAttendancePoint = (params) => request("POST", "/attendance-points", params);
+export const getAllAttendancePoints = () => request("GET", "/attendance-points/all");
+export const getPointsSummary = () => request("GET", "/attendance-points/summary");
+export const clearAllAttendancePoints = () => request("DELETE", "/attendance-points/clear");
 
 // Team Hours
 export const getAllTeamHours = () => request("GET", "/team-hours");

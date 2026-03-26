@@ -7,6 +7,7 @@ import (
 	"strings"
 
 	"github.com/go-chi/chi/v5"
+	"helpdesk-scheduler/auth"
 	"helpdesk-scheduler/database"
 	"helpdesk-scheduler/models"
 )
@@ -142,4 +143,57 @@ func DeleteTimeOffRequest(w http.ResponseWriter, r *http.Request) {
 	}
 
 	w.WriteHeader(http.StatusOK)
+}
+
+func UpdateTimeOffStatus(w http.ResponseWriter, r *http.Request) {
+	idStr := chi.URLParam(r, "id")
+	if idStr == "" {
+		http.Error(w, "id is required", http.StatusBadRequest)
+		return
+	}
+
+	id, err := strconv.Atoi(idStr)
+	if err != nil {
+		http.Error(w, "id must be a number", http.StatusBadRequest)
+		return
+	}
+
+	var req models.UpdateTimeOffStatusParams
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		http.Error(w, "Invalid Request Body", http.StatusBadRequest)
+		return
+	}
+
+	if req.Status == "" {
+		http.Error(w, "status is required", http.StatusBadRequest)
+		return
+	}
+
+	if req.Status != "pending" && req.Status != "excused" && req.Status != "unexcused" {
+		http.Error(w, "status must be pending, excused, or unexcused", http.StatusBadRequest)
+		return
+	}
+
+	// Get the admin's CWID from the auth context
+	adminCWID := auth.GetCWID(r)
+
+	if err := database.UpdateTimeOffStatus(id, req.Status, adminCWID); err != nil {
+		http.Error(w, "Failed to update time off status", http.StatusInternalServerError)
+		return
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(http.StatusOK)
+	json.NewEncoder(w).Encode(map[string]string{"status": req.Status})
+}
+
+func GetAbsenceCounts(w http.ResponseWriter, r *http.Request) {
+	counts, err := database.GetAllAbsenceCounts()
+	if err != nil {
+		http.Error(w, "Failed to fetch absence counts", http.StatusInternalServerError)
+		return
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(counts)
 }

@@ -1,4 +1,4 @@
-import { useState, useEffect, useMemo, useCallback } from "react";
+import { useState, useEffect, useRef, useMemo, useCallback } from "react";
 import { Icons } from "../components/Icons";
 import { teamColors, DAYS } from "../styles/theme";
 import { useAuth } from "../context/AuthContext";
@@ -27,10 +27,15 @@ import {
   clearAllSchedule,
   getAllTimeOffRequests,
   adminDeleteTimeOffRequest,
+  updateTimeOffStatus,
+  getAbsenceCounts,
   getAllTimeclockRequests,
   resolveTimeclockRequest,
   getAllTeamHours,
   setTeamHours,
+  getPointsSummary,
+  getAllAttendancePoints,
+  createAttendancePoint,
 } from "../api/client";
 
 export default function AdminPage({ showToast }) {
@@ -46,8 +51,11 @@ export default function AdminPage({ showToast }) {
   const [studentBadges, setStudentBadges] = useState([]);
   const [locked, setLocked] = useState(false);
   const [timeOffRequests, setTimeOffRequests] = useState([]);
+  const [absenceCounts, setAbsenceCounts] = useState([]);
   const [timeclockRequests, setTimeclockRequests] = useState([]);
   const [teamHours, setTeamHours] = useState([]);
+  const [pointsSummary, setPointsSummary] = useState([]);
+  const [attendancePoints, setAttendancePoints] = useState([]);
   const [showClearConfirm, setShowClearConfirm] = useState(false);
   const [clearing, setClearing] = useState(false);
 
@@ -55,7 +63,7 @@ export default function AdminPage({ showToast }) {
   const fetchAll = useCallback(async () => {
     setLoading(true);
     try {
-      const [studentsData, teamsData, assignmentsData, badgesData, studentBadgesData, lockData, timeOffData, timeclockData, teamHoursData] = await Promise.all([
+      const [studentsData, teamsData, assignmentsData, badgesData, studentBadgesData, lockData, timeOffData, absenceData, timeclockData, teamHoursData, pointsSummaryData, attendancePointsData] = await Promise.all([
         getAllStudents(),
         getAllTeams(),
         getAllAssignments(),
@@ -63,8 +71,11 @@ export default function AdminPage({ showToast }) {
         getAllStudentBadges(),
         getScheduleLock(),
         getAllTimeOffRequests(),
+        getAbsenceCounts(),
         getAllTimeclockRequests(),
         getAllTeamHours(),
+        getPointsSummary(),
+        getAllAttendancePoints(),
       ]);
       setStudents(studentsData || []);
       setTeams(teamsData || []);
@@ -73,8 +84,11 @@ export default function AdminPage({ showToast }) {
       setStudentBadges(studentBadgesData || []);
       setLocked(lockData?.locked ?? false);
       setTimeOffRequests(timeOffData || []);
+      setAbsenceCounts(absenceData || []);
       setTimeclockRequests(timeclockData || []);
       setTeamHours(teamHoursData || []);
+      setPointsSummary(pointsSummaryData || []);
+      setAttendancePoints(attendancePointsData || []);
     } catch (err) {
       console.error("Failed to load admin data:", err);
       showToast("Failed to load data", "error");
@@ -93,7 +107,7 @@ export default function AdminPage({ showToast }) {
       await setScheduleLock(!locked);
       setLocked(!locked);
       showToast(locked ? "Schedule unlocked" : "Schedule locked", "success");
-    } catch (err) {
+    } catch {
       showToast("Failed to toggle schedule lock", "error");
     }
   };
@@ -139,6 +153,7 @@ export default function AdminPage({ showToast }) {
     { key: "badges", label: "Badges", icon: <Icons.Shield /> },
     { key: "timeoff", label: "Time Off", icon: <Icons.Calendar /> },
     { key: "timeclock", label: "Time Clock", icon: <Icons.Clock /> },
+    { key: "attendance", label: "Attendance", icon: <Icons.AlertCircle /> },
   ];
 
   return (
@@ -253,6 +268,7 @@ export default function AdminPage({ showToast }) {
       {activeTab === "timeoff" && (
         <TimeOffTab
           requests={timeOffRequests}
+          absenceCounts={absenceCounts}
           showToast={showToast}
           onRefresh={fetchAll}
         />
@@ -264,6 +280,15 @@ export default function AdminPage({ showToast }) {
           onRefresh={fetchAll}
         />
       )}
+      {activeTab === "attendance" && (
+        <AttendanceTab
+          students={students}
+          summary={pointsSummary}
+          history={attendancePoints}
+          showToast={showToast}
+          onRefresh={fetchAll}
+        />
+      )}
     </div>
   );
 }
@@ -271,7 +296,7 @@ export default function AdminPage({ showToast }) {
 /* ------------------------------------------------------------------ */
 /*  Students Tab                                                       */
 /* ------------------------------------------------------------------ */
-function StudentsTab({ students, teams, assignments, badges, studentBadges, showToast, onRefresh }) {
+function StudentsTab({ students, teams, assignments, _badges, studentBadges, showToast, onRefresh }) {
   const [search, setSearch] = useState("");
   const [formName, setFormName] = useState("");
   const [formCwid, setFormCwid] = useState("");
@@ -561,7 +586,7 @@ function StudentsTab({ students, teams, assignments, badges, studentBadges, show
 /* ------------------------------------------------------------------ */
 /*  Teams Tab                                                          */
 /* ------------------------------------------------------------------ */
-function KaceQueueInput({ teamId, value, onSave, showToast }) {
+function KaceQueueInput({ _teamId, value, onSave, showToast }) {
   const [local, setLocal] = useState(value);
   useEffect(() => { setLocal(value); }, [value]);
 
@@ -1433,19 +1458,50 @@ function formatDate(dateStr) {
   return `${parseInt(m)}/${parseInt(d)}/${y}`;
 }
 
-function TimeOffTab({ requests, showToast, onRefresh }) {
+function TimeOffTab({ requests, absenceCounts, showToast, onRefresh }) {
   const [search, setSearch] = useState("");
-  const [filter, setFilter] = useState("all"); // "all" | "recurring" | "dated"
+  const [typeFilter, setTypeFilter] = useState("all"); // "all" | "recurring" | "dated"
+  const [statusFilter, setStatusFilter] = useState("pending"); // "all" | "pending" | "excused" | "unexcused"
   const [deletingId, setDeletingId] = useState(null);
+  const [updatingId, setUpdatingId] = useState(null);
+  const [statusMenuId, setStatusMenuId] = useState(null);
+  const menuRef = useRef(null);
+  const btnRef = useRef(null);
+  const [menuPos, setMenuPos] = useState({ top: 0, right: 0 });
+
+  // Position the dropdown above the table overflow and close on click outside
+  useEffect(() => {
+    if (!statusMenuId) return;
+    if (btnRef.current) {
+      const rect = btnRef.current.getBoundingClientRect();
+      setMenuPos({
+        top: rect.bottom + 2,
+        right: window.innerWidth - rect.right,
+      });
+    }
+    const handleClick = (e) => {
+      if (menuRef.current && !menuRef.current.contains(e.target) &&
+          btnRef.current && !btnRef.current.contains(e.target)) {
+        setStatusMenuId(null);
+      }
+    };
+    document.addEventListener("mousedown", handleClick);
+    return () => document.removeEventListener("mousedown", handleClick);
+  }, [statusMenuId]);
 
   const filtered = useMemo(() => {
     let list = requests;
 
     // Type filter
-    if (filter === "recurring") {
+    if (typeFilter === "recurring") {
       list = list.filter((r) => !r.effective_date);
-    } else if (filter === "dated") {
+    } else if (typeFilter === "dated") {
       list = list.filter((r) => r.effective_date);
+    }
+
+    // Status filter
+    if (statusFilter !== "all") {
+      list = list.filter((r) => (r.status || "pending") === statusFilter);
     }
 
     // Text search
@@ -1461,16 +1517,59 @@ function TimeOffTab({ requests, showToast, onRefresh }) {
     }
 
     return list;
-  }, [requests, search, filter]);
+  }, [requests, search, typeFilter, statusFilter]);
 
-  // Stats
-  const recurringCount = requests.filter((r) => !r.effective_date).length;
-  const datedCount = requests.filter((r) => r.effective_date).length;
+  // Group filtered requests by student+day+date+reason into single rows
+  const grouped = useMemo(() => {
+    const map = new Map();
+    for (const r of filtered) {
+      const key = `${r.cwid}|${r.day}|${r.effective_date || ""}|${r.reason || ""}`;
+      if (!map.has(key)) {
+        map.set(key, {
+          key,
+          ids: [r.id],
+          cwid: r.cwid,
+          student_name: r.student_name,
+          day: r.day,
+          slots: r.slot ? [r.slot] : [],
+          effective_date: r.effective_date,
+          reason: r.reason,
+          status: r.status || "pending",
+          reviewed_by: r.reviewed_by,
+          reviewed_at: r.reviewed_at,
+          created_at: r.created_at,
+        });
+      } else {
+        const g = map.get(key);
+        g.ids.push(r.id);
+        if (r.slot) g.slots.push(r.slot);
+      }
+    }
+    return Array.from(map.values());
+  }, [filtered]);
 
-  const handleDelete = async (id) => {
-    setDeletingId(id);
+  // Stats — count grouped requests, not individual rows
+  const allGrouped = useMemo(() => {
+    const map = new Map();
+    for (const r of requests) {
+      const key = `${r.cwid}|${r.day}|${r.effective_date || ""}|${r.reason || ""}`;
+      if (!map.has(key)) map.set(key, r);
+    }
+    return Array.from(map.values());
+  }, [requests]);
+  const recurringCount = allGrouped.filter((r) => !r.effective_date).length;
+  const datedCount = allGrouped.filter((r) => r.effective_date).length;
+  const pendingCount = allGrouped.filter((r) => (r.status || "pending") === "pending").length;
+  const excusedCount = allGrouped.filter((r) => r.status === "excused").length;
+  const unexcusedCount = allGrouped.filter((r) => r.status === "unexcused").length;
+
+  const handleDelete = async (ids) => {
+    const groupKey = ids.join(",");
+    setDeletingId(groupKey);
     try {
-      await adminDeleteTimeOffRequest(id);
+      for (const id of ids) {
+        await adminDeleteTimeOffRequest(id);
+      }
       showToast("Time off request removed", "success");
       await onRefresh();
     } catch {
@@ -1480,8 +1579,67 @@ function TimeOffTab({ requests, showToast, onRefresh }) {
     }
   };
 
+  const handleStatusChange = async (ids, newStatus) => {
+    const groupKey = ids.join(",");
+    setUpdatingId(groupKey);
+    try {
+      for (const id of ids) {
+        await updateTimeOffStatus(id, newStatus);
+      }
+      showToast(`Marked as ${newStatus}`, "success");
+      await onRefresh();
+    } catch {
+      showToast("Failed to update status", "error");
+    } finally {
+      setUpdatingId(null);
+      setStatusMenuId(null);
+    }
+  };
+
+  const getStatusBadgeStyle = (status) => {
+    switch (status) {
+      case "excused":
+        return { bg: "#DCFCE7", color: "#166534", border: "#86EFAC" };
+      case "unexcused":
+        return { bg: "#FEE2E2", color: "#991B1B", border: "#FCA5A5" };
+      default:
+        return { bg: "#FEF9C3", color: "#854D0E", border: "#FDE047" };
+    }
+  };
+
   return (
     <div>
+      {/* Absence Counts Summary */}
+      {absenceCounts && absenceCounts.length > 0 && (
+        <div style={{ marginBottom: 16, padding: 12, backgroundColor: "#F8FAFC", borderRadius: 8, border: "1px solid #E2E8F0" }}>
+          <div style={{ fontSize: 14, fontWeight: 600, color: "#1E293B", marginBottom: 8 }}>
+            Absence Summary by Student
+          </div>
+          <div style={{ display: "flex", flexWrap: "wrap", gap: 8 }}>
+            {absenceCounts.filter(c => c.total > 0).map((count) => (
+              <div
+                key={count.cwid}
+                style={{
+                  padding: "6px 12px",
+                  backgroundColor: "#fff",
+                  borderRadius: 6,
+                  border: "1px solid #E2E8F0",
+                  fontSize: 13,
+                }}
+              >
+                <span style={{ fontWeight: 600, color: "#1E293B" }}>{count.student_name}</span>
+                <span style={{ margin: "0 6px", color: "#CBD5E1" }}>|</span>
+                <span style={{ color: "#166534" }}>{count.excused} exc</span>
+                <span style={{ margin: "0 4px", color: "#CBD5E1" }}>/</span>
+                <span style={{ color: "#991B1B" }}>{count.unexcused} unexc</span>
+                <span style={{ margin: "0 4px", color: "#CBD5E1" }}>/</span>
+                <span style={{ color: "#854D0E" }}>{count.pending} pend</span>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+
       <div className="section-header" style={styles.sectionHeader}>
         <div style={{ display: "flex", gap: 12, alignItems: "center", flex: 1 }}>
           <div style={styles.searchWrap}>
@@ -1495,13 +1653,23 @@ function TimeOffTab({ requests, showToast, onRefresh }) {
             />
           </div>
           <select
-            value={filter}
-            onChange={(e) => setFilter(e.target.value)}
+            value={typeFilter}
+            onChange={(e) => setTypeFilter(e.target.value)}
             style={styles.filterSelect}
           >
-            <option value="all">All Requests ({requests.length})</option>
+            <option value="all">All Types ({allGrouped.length})</option>
             <option value="recurring">Recurring ({recurringCount})</option>
             <option value="dated">Scheduled Dates ({datedCount})</option>
+          </select>
+          <select
+            value={statusFilter}
+            onChange={(e) => setStatusFilter(e.target.value)}
+            style={styles.filterSelect}
+          >
+            <option value="all">All Statuses</option>
+            <option value="pending">Pending ({pendingCount})</option>
+            <option value="excused">Excused ({excusedCount})</option>
+            <option value="unexcused">Unexcused ({unexcusedCount})</option>
           </select>
         </div>
       </div>
@@ -1516,78 +1684,188 @@ function TimeOffTab({ requests, showToast, onRefresh }) {
               <th style={styles.th}>Type</th>
               <th style={styles.th}>Date</th>
               <th style={styles.th}>Reason</th>
+              <th style={styles.th}>Status</th>
               <th style={{ ...styles.th, textAlign: "right" }}>Actions</th>
             </tr>
           </thead>
           <tbody>
-            {filtered.length === 0 ? (
+            {grouped.length === 0 ? (
               <tr>
-                <td colSpan={7} style={styles.emptyRow}>
+                <td colSpan={8} style={styles.emptyRow}>
                   No time off requests found
                 </td>
               </tr>
             ) : (
-              filtered.map((req) => {
-                const initial = req.student_name ? req.student_name.charAt(0).toUpperCase() : "?";
+              grouped.map((grp) => {
+                const initial = grp.student_name ? grp.student_name.charAt(0).toUpperCase() : "?";
+                const badgeStyle = getStatusBadgeStyle(grp.status);
+                const groupKey = grp.ids.join(",");
+                const isUpdating = updatingId === groupKey;
+                const menuOpen = statusMenuId === grp.key;
+
                 return (
-                  <tr key={req.id} style={styles.tr}>
+                  <tr key={grp.key} style={styles.tr}>
                     <td style={styles.td}>
                       <div style={styles.nameCell}>
                         <div style={styles.avatar}>{initial}</div>
                         <div>
-                          <div style={styles.nameText}>{req.student_name}</div>
-                          <div style={styles.cwidSmall}>{req.cwid}</div>
+                          <div style={styles.nameText}>{grp.student_name}</div>
+                          <div style={styles.cwidSmall}>{grp.cwid}</div>
                         </div>
                       </div>
                     </td>
                     <td style={styles.td}>
-                      <span style={{ fontWeight: 600, fontSize: 13 }}>{req.day}</span>
+                      <span style={{ fontWeight: 600, fontSize: 13 }}>{grp.day}</span>
                     </td>
                     <td style={styles.td}>
-                      {!req.slot ? (
+                      {grp.slots.length === 0 ? (
                         <span style={styles.timeOffFullDay}>Full Day</span>
                       ) : (
-                        <span style={styles.timeOffSlot}>{req.slot}</span>
+                        <span style={styles.timeOffSlot}>
+                          {grp.slots[0].split(" - ")[0]} &ndash; {grp.slots[grp.slots.length - 1].split(" - ")[1]}
+                        </span>
                       )}
                     </td>
                     <td style={styles.td}>
-                      {req.effective_date ? (
+                      {grp.effective_date ? (
                         <span style={styles.timeOffDated}>One-time</span>
                       ) : (
                         <span style={styles.timeOffRecurring}>Recurring</span>
                       )}
                     </td>
                     <td style={styles.td}>
-                      {req.effective_date ? (
+                      {grp.effective_date ? (
                         <span style={{ fontSize: 13, fontWeight: 600, color: "#1E293B" }}>
-                          {formatDate(req.effective_date)}
+                          {formatDate(grp.effective_date)}
                         </span>
                       ) : (
                         <span style={{ fontSize: 12, color: "#94A3B8" }}>&mdash;</span>
                       )}
                     </td>
                     <td style={styles.td}>
-                      {req.reason ? (
+                      {grp.reason ? (
                         <span style={{ fontSize: 12, color: "#475569", fontStyle: "italic" }}>
-                          {req.reason}
+                          {grp.reason}
                         </span>
                       ) : (
                         <span style={{ fontSize: 12, color: "#CBD5E1" }}>&mdash;</span>
                       )}
                     </td>
-                    <td style={{ ...styles.td, textAlign: "right" }}>
-                      <button
-                        onClick={() => handleDelete(req.id)}
-                        disabled={deletingId === req.id}
-                        title="Remove request"
+                    <td style={styles.td}>
+                      <span
                         style={{
-                          ...styles.iconBtn,
-                          color: "#EF4444",
-                          opacity: deletingId === req.id ? 0.4 : 1,
+                          display: "inline-block",
+                          padding: "4px 8px",
+                          borderRadius: "12px",
+                          fontSize: "12px",
+                          fontWeight: 600,
+                          backgroundColor: badgeStyle.bg,
+                          color: badgeStyle.color,
+                          border: `1px solid ${badgeStyle.border}`,
                         }}
                       >
-                        <Icons.Trash />
-                      </button>
+                        {grp.status}
+                      </span>
+                    </td>
+                    <td style={{ ...styles.td, textAlign: "right" }}>
+                      <div style={{ display: "flex", gap: 4, justifyContent: "flex-end" }}>
+                        <div>
+                          <button
+                            onClick={(e) => {
+                              if (!menuOpen) {
+                                btnRef.current = e.currentTarget;
+                              }
+                              setStatusMenuId(menuOpen ? null : grp.key);
+                            }}
+                            disabled={isUpdating}
+                            title="Change status"
+                            style={{
+                              ...styles.iconBtn,
+                              color: "#6366F1",
+                              opacity: isUpdating ? 0.4 : 1,
+                              width: "auto",
+                              padding: "4px 8px",
+                              fontSize: "12px",
+                            }}
+                          >
+                            {grp.status} ▼
+                          </button>
+                          {menuOpen && (
+                            <div
+                              ref={menuRef}
+                              style={{
+                                position: "fixed",
+                                top: menuPos.top,
+                                right: menuPos.right,
+                                zIndex: 1000,
+                                backgroundColor: "#fff",
+                                border: "1px solid #E2E8F0",
+                                borderRadius: "8px",
+                                boxShadow: "0 4px 12px rgba(0,0,0,0.1)",
+                                minWidth: "120px",
+                              }}
+                            >
+                              <button
+                                onClick={() => handleStatusChange(grp.ids, "pending")}
+                                style={{
+                                  display: "block",
+                                  width: "100%",
+                                  padding: "8px 12px",
+                                  border: "none",
+                                  background: "none",
+                                  textAlign: "left",
+                                  fontSize: "13px",
+                                  cursor: "pointer",
+                                }}
+                              >
+                                <span style={{ marginRight: 8 }}>⏳</span> Pending
+                              </button>
+                              <button
+                                onClick={() => handleStatusChange(grp.ids, "excused")}
+                                style={{
+                                  display: "block",
+                                  width: "100%",
+                                  padding: "8px 12px",
+                                  border: "none",
+                                  background: "none",
+                                  textAlign: "left",
+                                  fontSize: "13px",
+                                  cursor: "pointer",
+                                }}
+                              >
+                                <span style={{ marginRight: 8 }}>✅</span> Excused
+                              </button>
+                              <button
+                                onClick={() => handleStatusChange(grp.ids, "unexcused")}
+                                style={{
+                                  display: "block",
+                                  width: "100%",
+                                  padding: "8px 12px",
+                                  border: "none",
+                                  background: "none",
+                                  textAlign: "left",
+                                  fontSize: "13px",
+                                  cursor: "pointer",
+                                }}
+                              >
+                                <span style={{ marginRight: 8 }}>❌</span> Unexcused
+                              </button>
+                            </div>
+                          )}
+                        </div>
+                        <button
+                          onClick={() => handleDelete(grp.ids)}
+                          disabled={deletingId === groupKey}
+                          title="Remove request"
+                          style={{
+                            ...styles.iconBtn,
+                            color: "#EF4444",
+                            opacity: deletingId === groupKey ? 0.4 : 1,
+                          }}
+                        >
+                          <Icons.Trash />
+                        </button>
+                      </div>
                     </td>
                   </tr>
                 );
@@ -1818,6 +2096,266 @@ function TimeclockTab({ requests, showToast, onRefresh }) {
 }
 
 /* ------------------------------------------------------------------ */
+/*  Attendance Tab                                                     */
+/* ------------------------------------------------------------------ */
+function getDisciplineColor(level) {
+  switch (level) {
+    case "Verbal Reminder": return { bg: "#FEF9C3", color: "#854D0E", border: "#FDE047" };
+    case "Written Warning": return { bg: "#FFEDD5", color: "#9A3412", border: "#FDBA74" };
+    case "Final Warning": return { bg: "#FEE2E2", color: "#991B1B", border: "#FCA5A5" };
+    case "Termination": return { bg: "#FEE2E2", color: "#7F1D1D", border: "#EF4444" };
+    default: return { bg: "#DCFCE7", color: "#166534", border: "#86EFAC" };
+  }
+}
+
+function AttendanceTab({ students, summary, history, showToast, onRefresh }) {
+  const [search, setSearch] = useState("");
+  const [formCwid, setFormCwid] = useState("");
+  const [formPoints, setFormPoints] = useState("");
+  const [formReason, setFormReason] = useState("");
+  const [submitting, setSubmitting] = useState(false);
+
+  const filtered = useMemo(() => {
+    const q = search.toLowerCase().trim();
+    if (!q) return history;
+    return history.filter(
+      (p) =>
+        (p.student_name || "").toLowerCase().includes(q) ||
+        p.cwid.toString().includes(q) ||
+        p.reason.toLowerCase().includes(q)
+    );
+  }, [history, search]);
+
+  const handleSubmit = async (e) => {
+    e.preventDefault();
+    if (!formCwid || !formPoints || !formReason.trim()) return;
+    setSubmitting(true);
+    try {
+      await createAttendancePoint({
+        cwid: formCwid,
+        points: parseFloat(formPoints),
+        reason: formReason.trim(),
+      });
+      showToast("Points assigned", "success");
+      setFormCwid("");
+      setFormPoints("");
+      setFormReason("");
+      await onRefresh();
+    } catch {
+      showToast("Failed to assign points", "error");
+    } finally {
+      setSubmitting(false);
+    }
+  };
+
+  return (
+    <div>
+      {/* Give Points Form */}
+      <div style={{ marginBottom: 16, padding: 16, backgroundColor: "#F8FAFC", borderRadius: 12, border: "1px solid #E2E8F0" }}>
+        <div style={{ fontSize: 14, fontWeight: 600, color: "#1E293B", marginBottom: 12 }}>
+          Assign Points
+        </div>
+        <form onSubmit={handleSubmit} style={{ display: "flex", gap: 10, alignItems: "flex-end", flexWrap: "wrap" }}>
+          <div style={{ flex: "0 0 200px" }}>
+            <label style={{ display: "block", fontSize: 12, color: "#64748B", marginBottom: 4 }}>Student</label>
+            <select
+              value={formCwid}
+              onChange={(e) => setFormCwid(e.target.value)}
+              style={{ ...styles.filterSelect, width: "100%" }}
+            >
+              <option value="">Select student...</option>
+              {students.map((s) => (
+                <option key={s.cwid} value={s.cwid}>{s.name} ({s.cwid})</option>
+              ))}
+            </select>
+          </div>
+          <div style={{ flex: "0 0 100px" }}>
+            <label style={{ display: "block", fontSize: 12, color: "#64748B", marginBottom: 4 }}>Points</label>
+            <input
+              type="number"
+              step="0.5"
+              min="0"
+              value={formPoints}
+              onChange={(e) => setFormPoints(e.target.value)}
+              placeholder="0.5"
+              style={{ ...styles.searchInput, width: "100%", paddingLeft: 10 }}
+            />
+          </div>
+          <div style={{ flex: 1, minWidth: 200 }}>
+            <label style={{ display: "block", fontSize: 12, color: "#64748B", marginBottom: 4 }}>Reason</label>
+            <input
+              type="text"
+              value={formReason}
+              onChange={(e) => setFormReason(e.target.value)}
+              placeholder="e.g. Tardy 15+ min on 3/25"
+              style={{ ...styles.searchInput, width: "100%", paddingLeft: 10 }}
+            />
+          </div>
+          <button
+            type="submit"
+            disabled={submitting || !formCwid || !formPoints || !formReason.trim()}
+            style={{
+              padding: "8px 16px",
+              borderRadius: 8,
+              border: "none",
+              backgroundColor: "#6366F1",
+              color: "#fff",
+              fontSize: 13,
+              fontWeight: 600,
+              cursor: "pointer",
+              opacity: (submitting || !formCwid || !formPoints || !formReason.trim()) ? 0.5 : 1,
+            }}
+          >
+            {submitting ? "Assigning..." : "Assign"}
+          </button>
+        </form>
+      </div>
+
+      {/* Points Summary by Student */}
+      <div style={{ marginBottom: 16 }}>
+        <div style={{ fontSize: 14, fontWeight: 600, color: "#1E293B", marginBottom: 8 }}>
+          Student Points Summary
+        </div>
+        <div style={styles.tableWrap}>
+          <table style={styles.table}>
+            <thead>
+              <tr>
+                <th style={styles.th}>Student</th>
+                <th style={styles.th}>Total Points</th>
+                <th style={styles.th}>Status</th>
+              </tr>
+            </thead>
+            <tbody>
+              {(!summary || summary.length === 0) ? (
+                <tr>
+                  <td colSpan={3} style={styles.emptyRow}>No students found</td>
+                </tr>
+              ) : (
+                summary.map((s) => {
+                  const dc = getDisciplineColor(s.discipline_level);
+                  return (
+                    <tr key={s.cwid} style={styles.tr}>
+                      <td style={styles.td}>
+                        <div style={styles.nameCell}>
+                          <div style={styles.avatar}>{s.student_name.charAt(0).toUpperCase()}</div>
+                          <div>
+                            <div style={styles.nameText}>{s.student_name}</div>
+                            <div style={styles.cwidSmall}>{s.cwid}</div>
+                          </div>
+                        </div>
+                      </td>
+                      <td style={styles.td}>
+                        <span style={{ fontWeight: 700, fontSize: 15, color: s.total_points >= 7 ? "#DC2626" : s.total_points >= 3 ? "#D97706" : "#1E293B" }}>
+                          {s.total_points}
+                        </span>
+                      </td>
+                      <td style={styles.td}>
+                        <span style={{
+                          display: "inline-block",
+                          padding: "4px 10px",
+                          borderRadius: 12,
+                          fontSize: 12,
+                          fontWeight: 600,
+                          backgroundColor: dc.bg,
+                          color: dc.color,
+                          border: `1px solid ${dc.border}`,
+                        }}>
+                          {s.discipline_level}
+                        </span>
+                      </td>
+                    </tr>
+                  );
+                })
+              )}
+            </tbody>
+          </table>
+        </div>
+      </div>
+
+      {/* Points History */}
+      <div>
+        <div className="section-header" style={styles.sectionHeader}>
+          <div style={{ display: "flex", gap: 12, alignItems: "center", flex: 1 }}>
+            <div style={styles.searchWrap}>
+              <span style={styles.searchIcon}><Icons.Search /></span>
+              <input
+                type="text"
+                placeholder="Search history..."
+                value={search}
+                onChange={(e) => setSearch(e.target.value)}
+                style={styles.searchInput}
+              />
+            </div>
+            <span style={{ fontSize: 13, color: "#64748B" }}>
+              {history.length} total entries
+            </span>
+          </div>
+        </div>
+
+        <div style={styles.tableWrap}>
+          <table style={styles.table}>
+            <thead>
+              <tr>
+                <th style={styles.th}>Student</th>
+                <th style={styles.th}>Points</th>
+                <th style={styles.th}>Reason</th>
+                <th style={styles.th}>Given By</th>
+                <th style={styles.th}>Date</th>
+              </tr>
+            </thead>
+            <tbody>
+              {filtered.length === 0 ? (
+                <tr>
+                  <td colSpan={5} style={styles.emptyRow}>No attendance points recorded</td>
+                </tr>
+              ) : (
+                filtered.map((p) => (
+                  <tr key={p.id} style={styles.tr}>
+                    <td style={styles.td}>
+                      <div style={styles.nameCell}>
+                        <div style={styles.avatar}>{(p.student_name || "?").charAt(0).toUpperCase()}</div>
+                        <div>
+                          <div style={styles.nameText}>{p.student_name}</div>
+                          <div style={styles.cwidSmall}>{p.cwid}</div>
+                        </div>
+                      </div>
+                    </td>
+                    <td style={styles.td}>
+                      <span style={{
+                        fontWeight: 700,
+                        fontSize: 14,
+                        color: p.points >= 3 ? "#DC2626" : p.points >= 1 ? "#D97706" : "#1E293B",
+                      }}>
+                        +{p.points}
+                      </span>
+                    </td>
+                    <td style={styles.td}>
+                      <span style={{ fontSize: 12, color: "#475569", fontStyle: "italic" }}>
+                        {p.reason}
+                      </span>
+                    </td>
+                    <td style={styles.td}>
+                      <span style={{ fontSize: 12, color: "#64748B" }}>
+                        {p.given_by_name || "—"}
+                      </span>
+                    </td>
+                    <td style={styles.td}>
+                      <span style={{ fontSize: 12, color: "#64748B" }}>
+                        {p.created_at ? new Date(p.created_at + "Z").toLocaleDateString() : "—"}
+                      </span>
+                    </td>
+                  </tr>
+                ))
+              )}
+            </tbody>
+          </table>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+/* ------------------------------------------------------------------ */
 /*  Styles                                                             */
 /* ------------------------------------------------------------------ */
 const styles = {
@@ -1866,6 +2404,8 @@ const styles = {
     display: "flex",
     alignItems: "center",
     justifyContent: "space-between",
+    flexWrap: "wrap",
+    gap: 8,
     background: "#FFF",
     borderBottom: "1px solid #E2E8F0",
     padding: "12px 24px",
@@ -1874,13 +2414,14 @@ const styles = {
   },
   tabGroup: {
     display: "flex",
+    flexWrap: "wrap",
     gap: 4,
   },
   tabActive: {
     display: "flex",
     alignItems: "center",
     gap: 6,
-    padding: "8px 16px",
+    padding: "8px 12px",
     background: "#0F172A",
     color: "#FFF",
     borderRadius: 8,
@@ -1888,12 +2429,13 @@ const styles = {
     fontSize: 13,
     fontWeight: 600,
     cursor: "pointer",
+    whiteSpace: "nowrap",
   },
   tabInactive: {
     display: "flex",
     alignItems: "center",
     gap: 6,
-    padding: "8px 16px",
+    padding: "8px 12px",
     background: "transparent",
     color: "#64748B",
     borderRadius: 8,
@@ -1901,6 +2443,7 @@ const styles = {
     fontSize: 13,
     fontWeight: 600,
     cursor: "pointer",
+    whiteSpace: "nowrap",
   },
   lockBtn: {
     display: "flex",
