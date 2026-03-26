@@ -8,6 +8,7 @@ import (
 	"net/http"
 	"strings"
 
+	"golang.org/x/crypto/bcrypt"
 	"helpdesk-scheduler/database"
 	"helpdesk-scheduler/models"
 )
@@ -68,9 +69,10 @@ func ImportStudents(w http.ResponseWriter, r *http.Request) {
 	cwidIdx, hasCwid := colMap["cwid"]
 	userIdx, hasUser := colMap["user_id"]
 	nameIdx, hasName := colMap["name"]
+	pinIdx, hasPin := colMap["pin"]
 
 	if !hasCwid || !hasUser || !hasName {
-		http.Error(w, "CSV must have columns: cwid, user_id, name", http.StatusBadRequest)
+		http.Error(w, "CSV must have columns: cwid, user_id, name (optional: pin)", http.StatusBadRequest)
 		return
 	}
 
@@ -101,11 +103,25 @@ func ImportStudents(w http.ResponseWriter, r *http.Request) {
 			continue
 		}
 
-		err = database.CreateStudent(models.CreateStudentParams{
+		params := models.CreateStudentParams{
 			CWID:    cwid,
 			User_ID: userID,
 			Name:    name,
-		})
+		}
+
+		if hasPin && pinIdx < len(row) {
+			pin := strings.TrimSpace(row[pinIdx])
+			if pin != "" {
+				hash, hashErr := bcrypt.GenerateFromPassword([]byte(pin), bcrypt.DefaultCost)
+				if hashErr != nil {
+					result.Errors = append(result.Errors, fmt.Sprintf("row %d (%s): failed to hash pin", rowNum, cwid))
+					continue
+				}
+				params.PinHash = string(hash)
+			}
+		}
+
+		err = database.CreateStudent(params)
 		if err != nil {
 			if strings.Contains(err.Error(), "UNIQUE") || strings.Contains(err.Error(), "constraint") {
 				result.Skipped++

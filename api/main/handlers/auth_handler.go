@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"net/http"
 
+	"golang.org/x/crypto/bcrypt"
 	"helpdesk-scheduler/auth"
 	"helpdesk-scheduler/database"
 )
@@ -11,6 +12,7 @@ import (
 func Login(w http.ResponseWriter, r *http.Request) {
 	var req struct {
 		CWID string `json:"cwid"`
+		Pin  string `json:"pin"`
 	}
 
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
@@ -18,14 +20,31 @@ func Login(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	if req.CWID == "" {
-		http.Error(w, "cwid is required", http.StatusBadRequest)
+	if req.CWID == "" || req.Pin == "" {
+		http.Error(w, "cwid and pin are required", http.StatusBadRequest)
 		return
 	}
 
 	student, err := database.GetStudent(req.CWID)
 	if err != nil {
 		http.Error(w, "CWID not recognized", http.StatusUnauthorized)
+		return
+	}
+
+	// Verify PIN
+	pinHash, err := database.GetStudentPinHash(req.CWID)
+	if err != nil {
+		http.Error(w, "CWID not recognized", http.StatusUnauthorized)
+		return
+	}
+
+	if pinHash == "" {
+		http.Error(w, "PIN not set. Contact an administrator.", http.StatusUnauthorized)
+		return
+	}
+
+	if err := bcrypt.CompareHashAndPassword([]byte(pinHash), []byte(req.Pin)); err != nil {
+		http.Error(w, "Invalid PIN", http.StatusUnauthorized)
 		return
 	}
 

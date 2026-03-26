@@ -5,6 +5,7 @@ import (
 	"embed"
 	"log"
 
+	"golang.org/x/crypto/bcrypt"
 	_ "modernc.org/sqlite"
 )
 
@@ -31,6 +32,7 @@ func InitDB(path string) {
 
 func runMigrations() {
 	// Add columns if they don't exist (for existing databases)
+	_, _ = DB.Exec("ALTER TABLE students ADD COLUMN pin_hash TEXT NOT NULL DEFAULT ''")
 	_, _ = DB.Exec("ALTER TABLE time_off_requests ADD COLUMN effective_date TEXT")
 	_, _ = DB.Exec("ALTER TABLE time_off_requests ADD COLUMN reason TEXT")
 	_, _ = DB.Exec("ALTER TABLE time_off_requests ADD COLUMN status TEXT NOT NULL DEFAULT 'pending'")
@@ -79,6 +81,14 @@ func runMigrations() {
 	} else if n, _ := result.RowsAffected(); n > 0 {
 		log.Printf("Cleaned up %d expired time-off requests", n)
 	}
+
+	// Seed default admin account (CWID: 00000000, PIN: 1234)
+	// INSERT OR IGNORE ensures this only runs if the account doesn't already exist
+	pinHash, _ := bcrypt.GenerateFromPassword([]byte("1234"), bcrypt.DefaultCost)
+	_, _ = DB.Exec(
+		`INSERT OR IGNORE INTO students (cwid, name, user_id, pin_hash, role) VALUES (?, ?, ?, ?, ?)`,
+		"00000000", "Help Desk", "helpdesk", string(pinHash), "admin",
+	)
 }
 
 func createTables(){

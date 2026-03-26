@@ -8,7 +8,9 @@ type Student struct {
 }
 
 type CreateStudentParams struct {
-	CWID	string `json:"cwid"`
-    User_ID string `json:"user_id"`
-    Name    string `json:"name"`
+	CWID    string `json:"cwid"`
+	User_ID string `json:"user_id"`
+	Name    string `json:"name"`
+	Pin     string `json:"pin"`
+	PinHash string `json:"-"`
 }

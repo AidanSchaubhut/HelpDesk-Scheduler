@@ -10,15 +10,20 @@ import (
 
 func CreateStudent(params models.CreateStudentParams) error {
 	const q = `
-		INSERT INTO students ("cwid", "name", "user_id")
-		VALUES (?, ?, ?)
+		INSERT INTO students ("cwid", "name", "user_id", "pin_hash")
+		VALUES (?, ?, ?, ?)
 	`
 
 	if DB == nil {
 		return sql.ErrConnDone
 	}
 
-	_, err := DB.Exec(q, params.CWID, params.Name, params.User_ID)
+	pinHash := ""
+	if params.PinHash != "" {
+		pinHash = params.PinHash
+	}
+
+	_, err := DB.Exec(q, params.CWID, params.Name, params.User_ID, pinHash)
 	if err != nil {
 		slog.Error("failed to create user", err)
 	}
@@ -67,6 +72,30 @@ func DeleteStudent(cwid string) error {
 		return fmt.Errorf("student %s not found", cwid)
 	}
 
+	return nil
+}
+
+func GetStudentPinHash(cwid string) (string, error) {
+	var pinHash string
+	err := DB.QueryRow("SELECT COALESCE(pin_hash, '') FROM students WHERE cwid = ?", cwid).Scan(&pinHash)
+	if err != nil {
+		return "", fmt.Errorf("student %s not found", cwid)
+	}
+	return pinHash, nil
+}
+
+func SetStudentPin(cwid string, pinHash string) error {
+	result, err := DB.Exec("UPDATE students SET pin_hash = ? WHERE cwid = ?", pinHash, cwid)
+	if err != nil {
+		return err
+	}
+	rows, err := result.RowsAffected()
+	if err != nil {
+		return err
+	}
+	if rows == 0 {
+		return fmt.Errorf("student %s not found", cwid)
+	}
 	return nil
 }
 

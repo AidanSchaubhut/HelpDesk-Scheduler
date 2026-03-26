@@ -3,7 +3,8 @@
   CREATE TABLE IF NOT EXISTS students (
       cwid TEXT PRIMARY KEY,
       name TEXT NOT NULL,
-      user_id TEXT NOT NULL,                                                                                                     
+      user_id TEXT NOT NULL,
+      pin_hash TEXT NOT NULL DEFAULT '',
       role TEXT NOT NULL DEFAULT 'student' CHECK (role IN ('student', 'admin'))
   );  
 

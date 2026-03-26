@@ -1,6 +1,6 @@
 import { useState, useEffect, useRef, useMemo, useCallback } from "react";
 import { Icons } from "../components/Icons";
-import { teamColors, DAYS } from "../styles/theme";
+import { teamColors, DAYS, TIME_SLOTS } from "../styles/theme";
 import { useAuth } from "../context/AuthContext";
 import {
   getAllStudents,
@@ -26,6 +26,7 @@ import {
   setScheduleLock,
   clearAllSchedule,
   getAllTimeOffRequests,
+  createTimeOffRequest,
   adminDeleteTimeOffRequest,
   updateTimeOffStatus,
   getAbsenceCounts,
@@ -36,6 +37,7 @@ import {
   getPointsSummary,
   getAllAttendancePoints,
   createAttendancePoint,
+  setStudentPin,
 } from "../api/client";
 
 export default function AdminPage({ showToast }) {
@@ -269,6 +271,7 @@ export default function AdminPage({ showToast }) {
         <TimeOffTab
           requests={timeOffRequests}
           absenceCounts={absenceCounts}
+          students={students}
           showToast={showToast}
           onRefresh={fetchAll}
         />
@@ -301,6 +304,7 @@ function StudentsTab({ students, teams, assignments, _badges, studentBadges, sho
   const [formName, setFormName] = useState("");
   const [formCwid, setFormCwid] = useState("");
   const [formUserId, setFormUserId] = useState("");
+  const [formPin, setFormPin] = useState("");
   const [showForm, setShowForm] = useState(false);
 
   // Build team map for display
@@ -354,11 +358,12 @@ function StudentsTab({ students, teams, assignments, _badges, studentBadges, sho
       return;
     }
     try {
-      await createStudent({ cwid: formCwid.trim(), user_id: formUserId.trim(), name: formName.trim() });
+      await createStudent({ cwid: formCwid.trim(), user_id: formUserId.trim(), name: formName.trim(), pin: formPin || undefined });
       showToast("Student added", "success");
       setFormName("");
       setFormCwid("");
       setFormUserId("");
+      setFormPin("");
       setShowForm(false);
       await onRefresh();
     } catch (err) {
@@ -374,6 +379,17 @@ function StudentsTab({ students, teams, assignments, _badges, studentBadges, sho
       await onRefresh();
     } catch (err) {
       showToast("Failed to delete student: " + err.message, "error");
+    }
+  };
+
+  const handleSetPin = async (cwid, name) => {
+    const pin = window.prompt(`Set campus PIN for ${name} (${cwid}):`);
+    if (!pin) return;
+    try {
+      await setStudentPin(cwid, pin);
+      showToast(`PIN set for ${name}`, "success");
+    } catch (err) {
+      showToast("Failed to set PIN: " + err.message, "error");
     }
   };
 
@@ -462,6 +478,13 @@ function StudentsTab({ students, teams, assignments, _badges, studentBadges, sho
             placeholder="User ID"
             value={formUserId}
             onChange={(e) => setFormUserId(e.target.value)}
+            style={styles.formInput}
+          />
+          <input
+            type="password"
+            placeholder="Campus PIN"
+            value={formPin}
+            onChange={(e) => setFormPin(e.target.value)}
             style={styles.formInput}
           />
           <button type="submit" style={styles.submitBtn}>
@@ -553,6 +576,13 @@ function StudentsTab({ students, teams, assignments, _badges, studentBadges, sho
                     </td>
                     <td style={{ ...styles.td, textAlign: "right" }}>
                       <div style={styles.actions}>
+                        <button
+                          onClick={() => handleSetPin(student.cwid, student.name)}
+                          title="Set PIN"
+                          style={{ ...styles.iconBtn, color: "#D97706" }}
+                        >
+                          <Icons.Lock />
+                        </button>
                         <button
                           onClick={() => handleToggleRole(student.cwid, student.role)}
                           title={student.role === "admin" ? "Demote to student" : "Promote to admin"}
@@ -1458,13 +1488,66 @@ function formatDate(dateStr) {
   return `${parseInt(m)}/${parseInt(d)}/${y}`;
 }
 
-function TimeOffTab({ requests, absenceCounts, showToast, onRefresh }) {
+function TimeOffTab({ requests, absenceCounts, students, showToast, onRefresh }) {
   const [search, setSearch] = useState("");
   const [typeFilter, setTypeFilter] = useState("all"); // "all" | "recurring" | "dated"
   const [statusFilter, setStatusFilter] = useState("pending"); // "all" | "pending" | "excused" | "unexcused"
   const [deletingId, setDeletingId] = useState(null);
   const [updatingId, setUpdatingId] = useState(null);
   const [statusMenuId, setStatusMenuId] = useState(null);
+
+  // Create request form state
+  const [formCwid, setFormCwid] = useState("");
+  const [formDate, setFormDate] = useState("");
+  const [formType, setFormType] = useState("full_day"); // "full_day" | "slots"
+  const [formSlots, setFormSlots] = useState([]);
+  const [formReason, setFormReason] = useState("");
+  const [formSubmitting, setFormSubmitting] = useState(false);
+
+  // Derive the day name from the selected date
+  const formDay = useMemo(() => {
+    if (!formDate) return "";
+    const d = new Date(formDate + "T12:00:00");
+    const idx = d.getDay(); // 0=Sun
+    return idx >= 1 && idx <= 5 ? DAYS[idx - 1] : "";
+  }, [formDate]);
+
+  const handleCreateRequest = async (e) => {
+    e.preventDefault();
+    if (!formCwid || !formDay || !formDate || !formReason.trim()) return;
+    if (formType === "slots" && formSlots.length === 0) return;
+
+    setFormSubmitting(true);
+    try {
+      const slotsToSubmit = formType === "full_day" ? [null] : formSlots;
+      for (const slot of slotsToSubmit) {
+        await createTimeOffRequest({
+          cwid: formCwid,
+          day: formDay,
+          slot: slot,
+          effective_date: formDate,
+          reason: formReason.trim(),
+        });
+      }
+      showToast("Time off request created", "success");
+      setFormCwid("");
+      setFormDate("");
+      setFormType("full_day");
+      setFormSlots([]);
+      setFormReason("");
+      await onRefresh();
+    } catch {
+      showToast("Failed to create time off request", "error");
+    } finally {
+      setFormSubmitting(false);
+    }
+  };
+
+  const toggleSlot = (slot) => {
+    setFormSlots((prev) =>
+      prev.includes(slot) ? prev.filter((s) => s !== slot) : [...prev, slot]
+    );
+  };
   const menuRef = useRef(null);
   const btnRef = useRef(null);
   const [menuPos, setMenuPos] = useState({ top: 0, right: 0 });
@@ -1609,6 +1692,96 @@ function TimeOffTab({ requests, absenceCounts, showToast, onRefresh }) {
 
   return (
     <div>
+      {/* Create Request on Behalf of Student */}
+      <div style={{ marginBottom: 16, padding: 16, backgroundColor: "#F8FAFC", borderRadius: 12, border: "1px solid #E2E8F0" }}>
+        <div style={{ fontSize: 14, fontWeight: 600, color: "#1E293B", marginBottom: 12 }}>
+          Create Time Off Request
+        </div>
+        <form onSubmit={handleCreateRequest} style={{ display: "flex", flexDirection: "column", gap: 10 }}>
+          <div style={{ display: "flex", gap: 10, flexWrap: "wrap" }}>
+            <div style={{ flex: "0 0 200px" }}>
+              <label style={{ display: "block", fontSize: 12, color: "#64748B", marginBottom: 4 }}>Student</label>
+              <select value={formCwid} onChange={(e) => setFormCwid(e.target.value)} style={{ ...styles.filterSelect, width: "100%" }}>
+                <option value="">Select student...</option>
+                {students.map((s) => (
+                  <option key={s.cwid} value={s.cwid}>{s.name} ({s.cwid})</option>
+                ))}
+              </select>
+            </div>
+            <div style={{ flex: "0 0 160px" }}>
+              <label style={{ display: "block", fontSize: 12, color: "#64748B", marginBottom: 4 }}>Date{formDay ? ` (${formDay})` : ""}</label>
+              <input type="date" value={formDate} onChange={(e) => setFormDate(e.target.value)} style={{ ...styles.searchInput, width: "100%", paddingLeft: 10 }} />
+              {formDate && !formDay && (
+                <div style={{ fontSize: 11, color: "#DC2626", marginTop: 2 }}>Weekdays only (Mon–Fri)</div>
+              )}
+            </div>
+            <div style={{ flex: "0 0 140px" }}>
+              <label style={{ display: "block", fontSize: 12, color: "#64748B", marginBottom: 4 }}>Coverage</label>
+              <select value={formType} onChange={(e) => { setFormType(e.target.value); setFormSlots([]); }} style={{ ...styles.filterSelect, width: "100%" }}>
+                <option value="full_day">Full Day</option>
+                <option value="slots">Specific Slots</option>
+              </select>
+            </div>
+          </div>
+          {formType === "slots" && (
+            <div>
+              <label style={{ display: "block", fontSize: 12, color: "#64748B", marginBottom: 4 }}>Slots (click to toggle)</label>
+              <div style={{ display: "flex", flexWrap: "wrap", gap: 4 }}>
+                {TIME_SLOTS.map((slot) => (
+                  <button
+                    key={slot}
+                    type="button"
+                    onClick={() => toggleSlot(slot)}
+                    style={{
+                      padding: "4px 8px",
+                      fontSize: 11,
+                      borderRadius: 6,
+                      border: formSlots.includes(slot) ? "1px solid #6366F1" : "1px solid #E2E8F0",
+                      backgroundColor: formSlots.includes(slot) ? "#EEF2FF" : "#fff",
+                      color: formSlots.includes(slot) ? "#4338CA" : "#64748B",
+                      cursor: "pointer",
+                      fontWeight: formSlots.includes(slot) ? 600 : 400,
+                    }}
+                  >
+                    {slot}
+                  </button>
+                ))}
+              </div>
+            </div>
+          )}
+          <div style={{ display: "flex", gap: 10, alignItems: "flex-end" }}>
+            <div style={{ flex: 1 }}>
+              <label style={{ display: "block", fontSize: 12, color: "#64748B", marginBottom: 4 }}>Reason</label>
+              <input
+                type="text"
+                value={formReason}
+                onChange={(e) => setFormReason(e.target.value)}
+                placeholder="Reason for time off..."
+                style={{ ...styles.searchInput, width: "100%", paddingLeft: 10 }}
+              />
+            </div>
+            <button
+              type="submit"
+              disabled={formSubmitting || !formCwid || !formDay || !formDate || !formReason.trim() || (formType === "slots" && formSlots.length === 0)}
+              style={{
+                padding: "8px 16px",
+                borderRadius: 8,
+                border: "none",
+                backgroundColor: "#6366F1",
+                color: "#fff",
+                fontSize: 13,
+                fontWeight: 600,
+                cursor: "pointer",
+                opacity: (formSubmitting || !formCwid || !formDay || !formDate || !formReason.trim()) ? 0.5 : 1,
+                whiteSpace: "nowrap",
+              }}
+            >
+              {formSubmitting ? "Creating..." : "Create Request"}
+            </button>
+          </div>
+        </form>
+      </div>
+
       {/* Absence Counts Summary */}
       {absenceCounts && absenceCounts.length > 0 && (
         <div style={{ marginBottom: 16, padding: 12, backgroundColor: "#F8FAFC", borderRadius: 8, border: "1px solid #E2E8F0" }}>

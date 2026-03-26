@@ -106,24 +106,34 @@ const styles = {
 
 export default function LoginPage() {
   const [cwid, setCwid] = useState("");
+  const [pin, setPin] = useState("");
   const [error, setError] = useState("");
-  const [focused, setFocused] = useState(false);
+  const [focusedField, setFocusedField] = useState(null);
   const [loading, setLoading] = useState(false);
   const { loginUser } = useAuth();
 
+  const canSubmit = cwid.length >= 5 && pin.length >= 1 && !loading;
+
   const handleLogin = async () => {
-    if (cwid.length < 5) return;
+    if (!canSubmit) return;
     setLoading(true);
     setError("");
     try {
-      const data = await api.login(cwid.trim());
+      const data = await api.login(cwid.trim(), pin);
       loginUser(data.token, data.student);
     } catch (err) {
-      setError(
-        err.status === 401
-          ? "CWID not recognized. Check your ID and try again."
-          : "Login failed. Please try again."
-      );
+      if (err.status === 401) {
+        const msg = err.message || "";
+        if (msg.includes("PIN not set")) {
+          setError("PIN not set. Contact an administrator.");
+        } else if (msg.includes("Invalid PIN")) {
+          setError("Invalid PIN. Please try again.");
+        } else {
+          setError("CWID not recognized. Check your ID and try again.");
+        }
+      } else {
+        setError("Login failed. Please try again.");
+      }
     } finally {
       setLoading(false);
     }
@@ -145,8 +155,8 @@ export default function LoginPage() {
           <div
             style={{
               ...styles.inputWrap,
-              borderColor: error ? "#DC2626" : focused ? "#1E40AF" : "#CBD5E1",
-              boxShadow: focused ? "0 0 0 3px rgba(30,64,175,0.1)" : "none",
+              borderColor: error ? "#DC2626" : focusedField === "cwid" ? "#1E40AF" : "#CBD5E1",
+              boxShadow: focusedField === "cwid" ? "0 0 0 3px rgba(30,64,175,0.1)" : "none",
             }}
           >
             <input
@@ -158,10 +168,32 @@ export default function LoginPage() {
                 setCwid(e.target.value.replace(/\D/g, ""));
                 setError("");
               }}
-              onFocus={() => setFocused(true)}
-              onBlur={() => setFocused(false)}
+              onFocus={() => setFocusedField("cwid")}
+              onBlur={() => setFocusedField(null)}
               onKeyDown={(e) => e.key === "Enter" && handleLogin()}
               maxLength={10}
+            />
+          </div>
+          <label style={{ ...styles.inputLabel, marginTop: 16 }}>Campus PIN</label>
+          <div
+            style={{
+              ...styles.inputWrap,
+              borderColor: error ? "#DC2626" : focusedField === "pin" ? "#1E40AF" : "#CBD5E1",
+              boxShadow: focusedField === "pin" ? "0 0 0 3px rgba(30,64,175,0.1)" : "none",
+            }}
+          >
+            <input
+              style={styles.input}
+              type="password"
+              placeholder="Enter your PIN"
+              value={pin}
+              onChange={(e) => {
+                setPin(e.target.value);
+                setError("");
+              }}
+              onFocus={() => setFocusedField("pin")}
+              onBlur={() => setFocusedField(null)}
+              onKeyDown={(e) => e.key === "Enter" && handleLogin()}
             />
           </div>
           {error && <p style={styles.errorText}>{error}</p>}
@@ -169,9 +201,9 @@ export default function LoginPage() {
             onClick={handleLogin}
             style={{
               ...styles.loginBtn,
-              opacity: cwid.length < 5 || loading ? 0.5 : 1,
+              opacity: canSubmit ? 1 : 0.5,
             }}
-            disabled={cwid.length < 5 || loading}
+            disabled={!canSubmit}
           >
             {loading ? "Signing in..." : "Sign In"}
           </button>

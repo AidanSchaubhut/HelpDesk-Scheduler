@@ -5,6 +5,7 @@ import (
 	"net/http"
 	"strings"
 
+	"golang.org/x/crypto/bcrypt"
 	"helpdesk-scheduler/database"
 	"helpdesk-scheduler/models"
 
@@ -22,6 +23,15 @@ func CreateStudent(w http.ResponseWriter, r *http.Request)  {
 	if req.CWID == "" || req.Name == "" || req.User_ID == "" {
 		http.Error(w, "CWID, Name, and User_ID are required", http.StatusBadRequest)
 		return
+	}
+
+	if req.Pin != "" {
+		hash, err := bcrypt.GenerateFromPassword([]byte(req.Pin), bcrypt.DefaultCost)
+		if err != nil {
+			http.Error(w, "Failed to hash PIN", http.StatusInternalServerError)
+			return
+		}
+		req.PinHash = string(hash)
 	}
 
 	if err := database.CreateStudent(req); err != nil {
@@ -74,6 +84,44 @@ func AssignStudentRole(w http.ResponseWriter, r *http.Request) {
 			http.Error(w, err.Error(), http.StatusNotFound)
 		} else {
 			http.Error(w, "Failed to assign Student new role", http.StatusInternalServerError)
+		}
+		return
+	}
+
+	w.WriteHeader(http.StatusOK)
+}
+
+func SetStudentPin(w http.ResponseWriter, r *http.Request) {
+	cwid := chi.URLParam(r, "cwid")
+	if cwid == "" {
+		http.Error(w, "CWID is required", http.StatusBadRequest)
+		return
+	}
+
+	var req struct {
+		Pin string `json:"pin"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		http.Error(w, "Invalid Request Body", http.StatusBadRequest)
+		return
+	}
+
+	if req.Pin == "" {
+		http.Error(w, "pin is required", http.StatusBadRequest)
+		return
+	}
+
+	hash, err := bcrypt.GenerateFromPassword([]byte(req.Pin), bcrypt.DefaultCost)
+	if err != nil {
+		http.Error(w, "Failed to hash PIN", http.StatusInternalServerError)
+		return
+	}
+
+	if err := database.SetStudentPin(cwid, string(hash)); err != nil {
+		if strings.Contains(err.Error(), "not found") {
+			http.Error(w, err.Error(), http.StatusNotFound)
+		} else {
+			http.Error(w, "Failed to set PIN", http.StatusInternalServerError)
 		}
 		return
 	}

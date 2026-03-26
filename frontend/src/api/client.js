@@ -32,7 +32,7 @@ async function request(method, path, body = null) {
 }
 
 // Auth
-export const login = (cwid) => request("POST", "/auth/login", { cwid });
+export const login = (cwid, pin) => request("POST", "/auth/login", { cwid, pin });
 
 // Students
 export const getAllStudents = () => request("GET", "/students");
@@ -40,6 +40,7 @@ export const getStudent = (cwid) => request("GET", `/students/${cwid}`);
 export const createStudent = (params) => request("POST", "/students", params);
 export const deleteStudent = (cwid) => request("DELETE", `/students/${cwid}`);
 export const assignStudentRole = (cwid, role) => request("POST", `/students/assign/${cwid}/${role}`);
+export const setStudentPin = (cwid, pin) => request("PUT", `/students/${cwid}/pin`, { pin });
 
 export async function importStudents(file) {
   const token = localStorage.getItem("token");

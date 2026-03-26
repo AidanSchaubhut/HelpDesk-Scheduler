@@ -62,6 +62,7 @@ func RegisterRoutes() chi.Router {
 				r.Post("/students/import", handlers.ImportStudents)
 				r.Delete("/students/{cwid}", handlers.DeleteStudent)
 				r.Post("/students/assign/{cwid}/{role}", handlers.AssignStudentRole)
+				r.Put("/students/{cwid}/pin", handlers.SetStudentPin)
 
 				// Badges admin routes - registered individually to avoid
 				// shadowing the authenticated GET /badges/student-badges above

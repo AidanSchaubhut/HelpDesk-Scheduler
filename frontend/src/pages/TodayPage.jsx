@@ -127,6 +127,22 @@ export default function TodayPage() {
     [teamHoursMap, teams, todayName]
   );
 
+  // Build unique students scheduled per team today
+  const teamRoster = useMemo(() => {
+    const map = {};
+    for (const entry of schedule) {
+      if (!map[entry.team_id]) map[entry.team_id] = new Map();
+      if (!map[entry.team_id].has(entry.cwid)) {
+        map[entry.team_id].set(entry.cwid, entry.student_name);
+      }
+    }
+    const result = {};
+    for (const [teamId, nameMap] of Object.entries(map)) {
+      result[teamId] = Array.from(nameMap.entries()).map(([cwid, name]) => ({ cwid, name }));
+    }
+    return result;
+  }, [schedule]);
+
   const gridCols = `120px${teams.map(() => " 1fr").join("")}`;
 
   if (loading) {
@@ -168,7 +184,7 @@ export default function TodayPage() {
         {/* Header row */}
         <div style={{ ...styles.headerRow, gridTemplateColumns: gridCols }}>
           <div style={styles.timeCol} />
-          {teams.map((team, i) => {
+          {teams.map((team) => {
             const colors = teamColorMap[team.id];
             const teamTotal = teamTicketTotals[team.id] || 0;
             return (
@@ -188,6 +204,55 @@ export default function TodayPage() {
                   >
                     🎫 {teamTotal}
                   </div>
+                )}
+              </div>
+            );
+          })}
+        </div>
+
+        {/* Roster bar — who should be here today */}
+        <div style={{ ...styles.headerRow, gridTemplateColumns: gridCols }}>
+          <div style={{ ...styles.timeCol, fontSize: 10, color: "#94A3B8", fontWeight: 600, textTransform: "uppercase" }}>
+            Here now
+          </div>
+          {teams.map((team) => {
+            const roster = teamRoster[team.id] || [];
+            const colors = teamColorMap[team.id];
+            return (
+              <div
+                key={team.id}
+                style={{
+                  padding: "6px 10px",
+                  display: "flex",
+                  flexWrap: "wrap",
+                  gap: 4,
+                  borderBottom: "1px solid #E2E8F0",
+                  background: "#FAFBFC",
+                }}
+              >
+                {roster.length === 0 ? (
+                  <span style={{ fontSize: 11, color: "#CBD5E1" }}>—</span>
+                ) : (
+                  roster.map((s) => {
+                    const off = hasTimeOff(s.cwid, null) || fullDayOffCwids.has(s.cwid);
+                    return (
+                      <span
+                        key={s.cwid}
+                        style={{
+                          fontSize: 11,
+                          fontWeight: 600,
+                          padding: "2px 6px",
+                          borderRadius: 4,
+                          backgroundColor: off ? "#F1F5F9" : colors.bg,
+                          color: off ? "#94A3B8" : colors.text,
+                          border: `1px solid ${off ? "#CBD5E1" : colors.border}`,
+                          textDecoration: off ? "line-through" : "none",
+                        }}
+                      >
+                        {s.name.split(" ")[0]}
+                      </span>
+                    );
+                  })
                 )}
               </div>
             );
