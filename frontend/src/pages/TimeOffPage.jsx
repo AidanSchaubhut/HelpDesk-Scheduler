@@ -60,33 +60,6 @@ const styles = {
     textTransform: "uppercase",
     letterSpacing: "0.05em",
   },
-  dayGroup: {
-    display: "flex",
-    gap: 0,
-    borderRadius: 8,
-    overflow: "hidden",
-    border: "1.5px solid #CBD5E1",
-    marginBottom: 16,
-  },
-  dayBtn: {
-    flex: 1,
-    padding: "9px 4px",
-    fontSize: 13,
-    fontWeight: 600,
-    border: "none",
-    cursor: "pointer",
-    transition: "all 0.15s",
-    background: "#FFF",
-    color: "#64748B",
-    borderRight: "1px solid #E2E8F0",
-  },
-  dayBtnActive: {
-    background: "#0F172A",
-    color: "#FFF",
-  },
-  dayBtnLast: {
-    borderRight: "none",
-  },
   typeToggle: {
     display: "flex",
     gap: 8,
@@ -243,19 +216,6 @@ const styles = {
     marginBottom: 16,
     padding: "4px 0",
   },
-  groupLabel: {
-    display: "flex",
-    alignItems: "center",
-    gap: 6,
-    fontSize: 13,
-    fontWeight: 700,
-    color: "#475569",
-    textTransform: "uppercase",
-    letterSpacing: "0.04em",
-    marginBottom: 12,
-    paddingBottom: 8,
-    borderBottom: "2px solid #E2E8F0",
-  },
   reasonInput: {
     width: "100%",
     padding: "10px 12px",
@@ -344,7 +304,6 @@ export default function TimeOffPage({ showToast }) {
   const [selectedDay, setSelectedDay] = useState(DAYS[0]);
   const [timeType, setTimeType] = useState("full"); // "full" | "slots"
   const [selectedSlots, setSelectedSlots] = useState([]);
-  const [scheduleMode, setScheduleMode] = useState("recurring"); // "recurring" | "date"
   const [selectedDate, setSelectedDate] = useState("");
   const [reason, setReason] = useState("");
   const [requests, setRequests] = useState([]);
@@ -409,20 +368,18 @@ export default function TimeOffPage({ showToast }) {
       showToast("Please select at least one time slot", "error");
       return;
     }
-    if (scheduleMode === "date" && !selectedDate) {
+    if (!selectedDate) {
       showToast("Please select a date", "error");
       return;
     }
-    if (scheduleMode === "date") {
-      const d = new Date(selectedDate + "T12:00:00");
-      const dayIndex = d.getDay();
-      if (dayIndex === 0 || dayIndex === 6) {
-        showToast("Please select a weekday (Monday–Friday)", "error");
-        return;
-      }
+    const d = new Date(selectedDate + "T12:00:00");
+    const dayIndex = d.getDay();
+    if (dayIndex === 0 || dayIndex === 6) {
+      showToast("Please select a weekday (Monday–Friday)", "error");
+      return;
     }
 
-    const effectiveDate = scheduleMode === "date" ? selectedDate : null;
+    const effectiveDate = selectedDate;
     const trimmedReason = reason.trim() || null;
 
     setSubmitting(true);
@@ -435,12 +392,7 @@ export default function TimeOffPage({ showToast }) {
           effective_date: effectiveDate,
           reason: trimmedReason,
         });
-        showToast(
-          effectiveDate
-            ? `Time off scheduled for ${effectiveDate}`
-            : "Full day time off request submitted",
-          "success"
-        );
+        showToast(`Time off scheduled for ${effectiveDate}`, "success");
       } else {
         let succeeded = 0;
         let failed = 0;
@@ -476,7 +428,7 @@ export default function TimeOffPage({ showToast }) {
 
       setSelectedSlots([]);
       setReason("");
-      if (scheduleMode === "date") setSelectedDate("");
+      setSelectedDate("");
       await fetchRequests();
     } catch {
       showToast("Failed to submit time off request", "error");
@@ -502,17 +454,8 @@ export default function TimeOffPage({ showToast }) {
     }
   };
 
-  // Split into recurring and date-specific, then group
-  const recurringRequests = requests.filter((r) => !r.effective_date);
+  // Group requests by effective_date
   const dateRequests = requests.filter((r) => r.effective_date);
-
-  const groupedRecurring = DAYS.reduce((acc, day) => {
-    const dayRequests = recurringRequests.filter((r) => r.day === day);
-    if (dayRequests.length > 0) acc[day] = dayRequests;
-    return acc;
-  }, {});
-
-  // Group date-specific by effective_date
   const groupedDated = {};
   dateRequests.forEach((r) => {
     if (!groupedDated[r.effective_date]) groupedDated[r.effective_date] = [];
@@ -534,12 +477,12 @@ export default function TimeOffPage({ showToast }) {
     return counts;
   }, [requests]);
 
-  const hasRequests = recurringRequests.length > 0 || dateRequests.length > 0;
+  const hasRequests = dateRequests.length > 0;
 
   const canSubmit =
     !submitting &&
     (timeType === "full" || selectedSlots.length > 0) &&
-    (scheduleMode === "recurring" || selectedDate) &&
+    selectedDate &&
     reason.trim().length > 0;
 
   return (
@@ -559,66 +502,18 @@ export default function TimeOffPage({ showToast }) {
           <Icons.Plus /> New Request
         </h2>
 
-        <label style={styles.label}>Schedule Type</label>
-        <div style={styles.typeToggle}>
-          <button
-            onClick={() => {
-              setScheduleMode("recurring");
-              setSelectedDate("");
-            }}
-            style={{
-              ...styles.typeBtn,
-              ...(scheduleMode === "recurring" ? styles.typeBtnActive : {}),
-            }}
-          >
-            <Icons.Calendar /> Recurring (Weekly)
-          </button>
-          <button
-            onClick={() => setScheduleMode("date")}
-            style={{
-              ...styles.typeBtn,
-              ...(scheduleMode === "date" ? styles.typeBtnActive : {}),
-            }}
-          >
-            <Icons.Clock /> Specific Date
-          </button>
-        </div>
-
-        {scheduleMode === "date" ? (
-          <>
-            <label style={styles.label}>Date</label>
-            <input
-              type="date"
-              value={selectedDate}
-              min={today}
-              onChange={(e) => handleDateChange(e.target.value)}
-              style={styles.dateInput}
-            />
-            {selectedDate && (
-              <div style={styles.dateHint}>
-                Day: <strong>{selectedDay}</strong>
-              </div>
-            )}
-          </>
-        ) : (
-          <>
-            <label style={styles.label}>Day</label>
-            <div style={styles.dayGroup}>
-              {DAYS.map((day, i) => (
-                <button
-                  key={day}
-                  onClick={() => setSelectedDay(day)}
-                  style={{
-                    ...styles.dayBtn,
-                    ...(selectedDay === day ? styles.dayBtnActive : {}),
-                    ...(i === DAYS.length - 1 ? styles.dayBtnLast : {}),
-                  }}
-                >
-                  {day.slice(0, 3)}
-                </button>
-              ))}
-            </div>
-          </>
+        <label style={styles.label}>Date</label>
+        <input
+          type="date"
+          value={selectedDate}
+          min={today}
+          onChange={(e) => handleDateChange(e.target.value)}
+          style={styles.dateInput}
+        />
+        {selectedDate && (
+          <div style={styles.dateHint}>
+            Day: <strong>{selectedDay}</strong>
+          </div>
         )}
 
         <label style={styles.label}>Time</label>
@@ -807,53 +702,21 @@ export default function TimeOffPage({ showToast }) {
           </div>
         ) : (
           <>
-            {/* Recurring requests */}
-            {Object.keys(groupedRecurring).length > 0 && (
-              <div style={{ marginBottom: 20 }}>
-                <div style={styles.groupLabel}>
-                  <Icons.Calendar /> Recurring (Every Week)
+            {sortedDates.map((date) => (
+              <div key={date} style={{ marginBottom: 16 }}>
+                <div style={styles.dayGroupHeader}>
+                  <Icons.Calendar /> {formatDate(date)} ({groupedDated[date][0].day})
                 </div>
-                {Object.entries(groupedRecurring).map(([day, dayRequests]) => (
-                  <div key={day} style={{ marginBottom: 16 }}>
-                    <div style={styles.dayGroupHeader}>
-                      <Icons.Calendar /> {day}
-                    </div>
-                    {groupByReason(dayRequests).map((grp) => (
-                      <RequestRow
-                        key={grp.ids.join(",")}
-                        group={grp}
-                        deletingId={deletingId}
-                        onDelete={handleDelete}
-                      />
-                    ))}
-                  </div>
+                {groupByReason(groupedDated[date]).map((grp) => (
+                  <RequestRow
+                    key={grp.ids.join(",")}
+                    group={grp}
+                    deletingId={deletingId}
+                    onDelete={handleDelete}
+                  />
                 ))}
               </div>
-            )}
-
-            {/* Date-specific requests */}
-            {sortedDates.length > 0 && (
-              <div>
-                <div style={styles.groupLabel}>
-                  <Icons.Clock /> Scheduled Dates
-                </div>
-                {sortedDates.map((date) => (
-                  <div key={date} style={{ marginBottom: 16 }}>
-                    <div style={styles.dayGroupHeader}>
-                      <Icons.Calendar /> {formatDate(date)} ({groupedDated[date][0].day})
-                    </div>
-                    {groupByReason(groupedDated[date]).map((grp) => (
-                      <RequestRow
-                        key={grp.ids.join(",")}
-                        group={grp}
-                        deletingId={deletingId}
-                        onDelete={handleDelete}
-                      />
-                    ))}
-                  </div>
-                ))}
-              </div>
-            )}
+            ))}
           </>
         )}
       </div>
