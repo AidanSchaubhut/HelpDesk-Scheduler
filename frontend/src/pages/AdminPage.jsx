@@ -37,6 +37,7 @@ import {
   getPointsSummary,
   getAllAttendancePoints,
   createAttendancePoint,
+  deleteAttendancePoint,
   setStudentPin,
 } from "../api/client";
 
@@ -2287,6 +2288,7 @@ function AttendanceTab({ students, summary, history, showToast, onRefresh }) {
   const [formPoints, setFormPoints] = useState("");
   const [formReason, setFormReason] = useState("");
   const [submitting, setSubmitting] = useState(false);
+  const [deletingId, setDeletingId] = useState(null);
 
   const filtered = useMemo(() => {
     const q = search.toLowerCase().trim();
@@ -2318,6 +2320,19 @@ function AttendanceTab({ students, summary, history, showToast, onRefresh }) {
       showToast("Failed to assign points", "error");
     } finally {
       setSubmitting(false);
+    }
+  };
+
+  const handleDelete = async (id) => {
+    setDeletingId(id);
+    try {
+      await deleteAttendancePoint(id);
+      showToast("Point entry removed", "success");
+      await onRefresh();
+    } catch {
+      showToast("Failed to remove point entry", "error");
+    } finally {
+      setDeletingId(null);
     }
   };
 
@@ -2473,13 +2488,13 @@ function AttendanceTab({ students, summary, history, showToast, onRefresh }) {
                 <th style={styles.th}>Points</th>
                 <th style={styles.th}>Reason</th>
                 <th style={styles.th}>Given By</th>
-                <th style={styles.th}>Date</th>
+                <th style={{ ...styles.th, textAlign: "right" }}>Actions</th>
               </tr>
             </thead>
             <tbody>
               {filtered.length === 0 ? (
                 <tr>
-                  <td colSpan={5} style={styles.emptyRow}>No attendance points recorded</td>
+                  <td colSpan={6} style={styles.emptyRow}>No attendance points recorded</td>
                 </tr>
               ) : (
                 filtered.map((p) => (
@@ -2512,10 +2527,19 @@ function AttendanceTab({ students, summary, history, showToast, onRefresh }) {
                         {p.given_by_name || "—"}
                       </span>
                     </td>
-                    <td style={styles.td}>
-                      <span style={{ fontSize: 12, color: "#64748B" }}>
-                        {p.created_at ? new Date(p.created_at + "Z").toLocaleDateString() : "—"}
-                      </span>
+                    <td style={{ ...styles.td, textAlign: "right" }}>
+                      <button
+                        onClick={() => handleDelete(p.id)}
+                        disabled={deletingId === p.id}
+                        title="Remove point entry"
+                        style={{
+                          ...styles.iconBtn,
+                          color: "#EF4444",
+                          opacity: deletingId === p.id ? 0.4 : 1,
+                        }}
+                      >
+                        <Icons.Trash />
+                      </button>
                     </td>
                   </tr>
                 ))

@@ -2,6 +2,7 @@ package database
 
 import (
 	"database/sql"
+	"fmt"
 
 	"helpdesk-scheduler/models"
 )
@@ -108,6 +109,21 @@ func GetAllAttendancePoints() ([]models.AttendancePointDetail, error) {
 		points = append(points, p)
 	}
 	return points, rows.Err()
+}
+
+func DeleteAttendancePoint(id int) error {
+	result, err := DB.Exec("DELETE FROM attendance_points WHERE id = ?", id)
+	if err != nil {
+		return err
+	}
+	rows, err := result.RowsAffected()
+	if err != nil {
+		return err
+	}
+	if rows == 0 {
+		return fmt.Errorf("attendance point %d not found", id)
+	}
+	return nil
 }
 
 func DeleteAllAttendancePoints() (int64, error) {

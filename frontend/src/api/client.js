@@ -97,6 +97,7 @@ export const getMyPoints = () => request("GET", "/attendance-points/me");
 export const createAttendancePoint = (params) => request("POST", "/attendance-points", params);
 export const getAllAttendancePoints = () => request("GET", "/attendance-points/all");
 export const getPointsSummary = () => request("GET", "/attendance-points/summary");
+export const deleteAttendancePoint = (id) => request("DELETE", `/attendance-points/${id}`);
 export const clearAllAttendancePoints = () => request("DELETE", "/attendance-points/clear");
 
 // Team Hours

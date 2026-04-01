@@ -643,13 +643,8 @@ export default function TimeOffPage({ showToast }) {
                   border: "1px solid #E2E8F0",
                   fontSize: 13,
                 }}>
-                  <div style={{ flex: 1 }}>
-                    <span style={{ fontWeight: 600, color: "#DC2626", marginRight: 8 }}>+{p.points}</span>
-                    <span style={{ color: "#475569", fontStyle: "italic" }}>{p.reason}</span>
-                  </div>
-                  <span style={{ fontSize: 11, color: "#94A3B8" }}>
-                    {p.created_at ? new Date(p.created_at + "Z").toLocaleDateString() : ""}
-                  </span>
+                  <span style={{ fontWeight: 600, color: "#DC2626", marginRight: 8 }}>+{p.points}</span>
+                  <span style={{ color: "#475569", fontStyle: "italic" }}>{p.reason}</span>
                 </div>
               ))}
             </div>

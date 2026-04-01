@@ -99,6 +99,7 @@ func RegisterRoutes() chi.Router {
 			r.Get("/attendance-points/all", handlers.GetAllAttendancePoints)
 			r.Get("/attendance-points/summary", handlers.GetAllPointsSummary)
 			r.Delete("/attendance-points/clear", handlers.DeleteAllAttendancePoints)
+			r.Delete("/attendance-points/{id}", handlers.DeleteAttendancePoint)
 
 			// Team hours admin routes
 			r.Put("/team-hours/{teamId}", handlers.SetTeamHours)
