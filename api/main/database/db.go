@@ -74,6 +74,15 @@ func runMigrations() {
 		created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP
 	)`)
 
+	// Create kace_tickets table if it doesn't exist (for existing databases)
+	_, _ = DB.Exec(`CREATE TABLE IF NOT EXISTS kace_tickets (
+		username TEXT PRIMARY KEY,
+		cwid TEXT NOT NULL DEFAULT '',
+		team_id TEXT NOT NULL DEFAULT '',
+		ticket_count INTEGER NOT NULL DEFAULT 0,
+		updated_at TEXT NOT NULL DEFAULT (datetime('now'))
+	)`)
+
 	// Clean up expired date-specific time-off requests
 	result, err := DB.Exec("DELETE FROM time_off_requests WHERE effective_date IS NOT NULL AND effective_date < date('now')")
 	if err != nil {

@@ -37,7 +37,7 @@ No test framework is configured for either backend or frontend.
 ### Environment Variables
 Backend reads `api/main/.env` on startup (see `.env.example`). Keys:
 - `PORT` — server port (default: `80`, use `8080` for local dev)
-- `KACE_HOST`, `KACE_USERNAME`, `KACE_PASSWORD` — KACE ticket integration (currently stubbed)
+- `KACE_HOST`, `KACE_USERNAME`, `KACE_PASSWORD` — KACE ticket integration (gracefully returns empty data if `KACE_HOST` is not set)
 
 ## Architecture
 
@@ -49,12 +49,13 @@ Backend reads `api/main/.env` on startup (see `.env.example`). Keys:
 - `database/` — one file per domain. Schema in `database/schema.sql` (embedded via `//go:embed`), migrations in `database/db.go`.
 - `handlers/` — HTTP handlers, one file per domain. Decode JSON, validate, call database layer, return response.
 - `models/` — request/response structs with JSON tags.
+- `kace/` — KACE ticket integration. `client.go` handles authentication (session cached 10 min) and per-user ticket fetching. `poller.go` runs a background goroutine every 3 minutes that fetches ticket counts for each scheduled student and team queue user, storing results in the `kace_tickets` DB table. The handler (`handlers/kace_handler.go`) reads from the DB — it never calls KACE directly.
 - **Important routing pattern**: Chi's `r.Route()` subrouters take ownership of path prefixes and shadow sibling routes. When admin routes share a prefix with authenticated routes (e.g., `/teams`, `/badges`, `/time-off`), register admin routes individually (`r.Get`, `r.Post`, etc.) instead of using `r.Route()`.
 
 ### Frontend — `frontend/src/`
 - **React 19 + Vite**. Inline styles (no CSS framework).
 - `api/client.js` — centralized API client with JWT auth headers and auto-logout on 401. Error objects have `.status` and `.message` (response body text).
-- `api/kace.js` — **stub** for KACE ticket integration. Returns empty data; replace with real API calls when ready.
+- `api/kace.js` — KACE ticket API client. Fetches per-student and per-team ticket counts from `/api/kace/tickets`. Falls back to empty data on failure.
 - `context/AuthContext.jsx` — auth state (user, token, isAdmin) with localStorage persistence.
 - `styles/theme.js` — shared constants: `DAYS`, `TIME_SLOTS`, `teamColors()`, `getCurrentDay()`, `slotToMinutes()`, `buildTeamHoursMap()`, `getVisibleSlots()`, `isSlotActiveForTeam()`.
 - `components/` — Nav (tab routing), DaySelector (Mon–Fri bar), Icons (SVG components), Toast (notifications).
@@ -63,8 +64,8 @@ Backend reads `api/main/.env` on startup (see `.env.example`). Keys:
 - **LoginPage** — CWID + Campus PIN login (PIN field is `type="password"`).
 - **SignUpPage** — shift sign-up grid with capacity toggles, autofill, weekly hours count, clear schedule button.
 - **SchedulePage** — read-only weekly schedule grid with badges.
-- **TodayPage** — live view locked to today. Red time indicator line (updates every 30s), time-off graying/strikethrough, "Here Now" roster bar per team, KACE ticket counts (stubbed). Auto-refreshes schedule data every 60 seconds.
-- **TimeOffPage** — request form (recurring or date-specific), slot or full-day selection, required reason. Shows student's attendance points summary and time-off status counts (pending/excused/unexcused).
+- **TodayPage** — live view locked to today. Red time indicator line (updates every 30s), time-off graying/strikethrough, "Here Now" roster bar per team, KACE ticket counts per student/team. Auto-refreshes schedule data every 60 seconds.
+- **TimeOffPage** — date-specific time-off request form, slot or full-day selection, required reason. Shows student's attendance points summary and time-off status counts (pending/excused/unexcused).
 - **TimeclockPage** — timeclock correction request form.
 - **AdminPage** — 7 tabs: Students, Teams, Assignments, Badges, Time Off, Time Clock, Attendance. Plus schedule lock toggle and clear-all-schedule button (also clears time-off requests and attendance points).
 
@@ -75,11 +76,12 @@ Each domain has its own `database/*.go`, `handlers/*_handler.go`, and `models/*_
 - **assignments** — student-to-team junction table
 - **schedule** — day/slot/team/cwid entries
 - **badges** — configurable emoji icons assigned to students
-- **time_off** — recurring or date-specific requests with status (pending/excused/unexcused), reviewed_by, reviewed_at
+- **time_off** — date-specific requests with status (pending/excused/unexcused), reviewed_by, reviewed_at
 - **attendance_points** — point values with freeform reason, tracks who assigned them
 - **timeclock** — correction requests with pending/fixed status and admin resolution
 - **team_hours** — per-team, per-day operating hours
 - **schedule_lock** — single-row config table for freeze/unfreeze
+- **kace_tickets** — cached ticket counts per KACE username, populated by background poller (no foreign keys; rebuilt each poll cycle)
 
 ## Key Domain Concepts
 
@@ -87,7 +89,7 @@ Each domain has its own `database/*.go`, `handlers/*_handler.go`, and `models/*_
 - **Campus PIN** — bcrypt-hashed password stored in `pin_hash` column. Required for login.
 - **Team** — work group with color and per-slot capacity (default 3)
 - **Slot** — 30-minute time block (8:00 AM–4:30 PM); schedule key is `day|slot|team|cwid`
-- **Time Off** — recurring (every week on a day) or date-specific (one-time, auto-deleted after date passes). Has excused/unexcused/pending status. Multi-slot requests are stored as individual rows but grouped in the UI by cwid+day+date+reason.
+- **Time Off** — date-specific (one-time, auto-deleted after date passes). Has excused/unexcused/pending status. Multi-slot requests are stored as individual rows but grouped in the UI by cwid+day+date+reason.
 - **Attendance Points** — progressive discipline system: 0.5 (tardy), 1 (absence), 3 (no-show). Thresholds: 3=Verbal Reminder, 5=Written Warning, 7=Final Warning, 10=Termination. Points reset with "Clear Schedule".
 - **Cascade behavior** — removing a student from a team deletes their schedule entries for that team; deleting a student cascades to assignments, schedule, time-off, and attendance points.
 
@@ -103,3 +105,4 @@ Each domain has its own `database/*.go`, `handlers/*_handler.go`, and `models/*_
 - **Schema migrations** are idempotent `ALTER TABLE` / `CREATE TABLE IF NOT EXISTS` statements in `database/db.go` (no version tracking). Expired date-specific time-off requests are auto-cleaned on startup.
 - **Time-off grouping**: Multi-slot requests are stored as individual DB rows (one per slot) for per-slot lookup on TodayPage. The admin and student UIs group them by cwid+day+date+reason for display. Status changes and deletes operate on all rows in a group sequentially.
 - **PIN management**: Students without a `pin_hash` cannot log in. Admins set PINs via the lock icon in the Students tab or during CSV import (optional `pin` column). Default admin account is seeded on first run.
+- **KACE background poller**: Ticket counts are fetched by a background goroutine (`kace.StartPoller`) every 3 minutes, not on each client request. The poller clears the `kace_tickets` table each cycle, then upserts per-student and per-team counts. The `/api/kace/tickets` handler reads from the DB and computes team rollups. If `KACE_HOST` is unset, the poller doesn't start and the handler returns empty maps.

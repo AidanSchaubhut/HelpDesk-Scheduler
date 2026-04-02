@@ -35,16 +35,10 @@ type session struct {
 }
 
 var (
-	// ticket cache
-	cacheMu    sync.Mutex
-	cachedData *KACEResponse
-	cachedAt   time.Time
-	cacheTTL   = 2 * time.Minute
-
 	// session cache (reuse login across requests)
-	sessMu    sync.Mutex
-	sess      *session
-	sessTTL   = 10 * time.Minute
+	sessMu  sync.Mutex
+	sess    *session
+	sessTTL = 10 * time.Minute
 )
 
 func getHost() string {
@@ -120,45 +114,39 @@ func clearSession() {
 	sessMu.Unlock()
 }
 
-// FetchTickets calls the KACE API for tickets owned by the given usernames.
-// Returns the parsed ticket list. Results are cached for cacheTTL.
-func FetchTickets(usernames []string) ([]KACETicket, error) {
-	if len(usernames) == 0 {
-		return nil, nil
-	}
-
+// FetchTicketCount fetches the open ticket count for a single KACE username.
+// Returns the count of non-closed tickets in queue 3 owned by the given username.
+func FetchTicketCount(username string) (int, error) {
 	host := getHost()
 	if host == "" {
-		// KACE not configured — return empty (graceful degradation)
-		return nil, nil
+		return 0, nil
 	}
 
-	// Check cache
-	cacheMu.Lock()
-	if cachedData != nil && time.Since(cachedAt) < cacheTTL {
-		data := cachedData
-		cacheMu.Unlock()
-		return data.Tickets, nil
-	}
-	cacheMu.Unlock()
-
-	// Authenticate (uses cached session if still valid)
 	s, err := authenticate()
 	if err != nil {
-		return nil, fmt.Errorf("kace auth failed: %w", err)
+		return 0, fmt.Errorf("kace auth failed: %w", err)
 	}
 
-	// Build the username list for the KACE filter: user1;user2;user3
-	usernameList := strings.Join(usernames, ";")
+	count, err := fetchTicketCountWithSession(s, host, username)
+	if err != nil && strings.Contains(err.Error(), "401") {
+		// Session expired, retry with fresh auth
+		clearSession()
+		s, err = authenticate()
+		if err != nil {
+			return 0, fmt.Errorf("kace re-auth failed: %w", err)
+		}
+		count, err = fetchTicketCountWithSession(s, host, username)
+	}
+	return count, err
+}
 
-	// Build URL — encode spaces as %20 but preserve parens, commas, semicolons
+func fetchTicketCountWithSession(s *session, host, username string) (int, error) {
 	baseURL := fmt.Sprintf("%s/api/service_desk/tickets", host)
 
-	filtering := fmt.Sprintf("hd_queue_id eq 3,status.state neq closed,owner.user_name in (%s)", usernameList)
+	filtering := fmt.Sprintf("hd_queue_id eq 3,status.state neq closed,owner.user_name eq %s", username)
 	shaping := "hd_ticket all,owner limited,submitter limited"
 	paging := "limit 1000"
 
-	// Replace spaces with %20 in param values (not in keys/delimiters)
 	encodeSpaces := func(s string) string {
 		return strings.ReplaceAll(s, " ", "%20")
 	}
@@ -171,7 +159,7 @@ func FetchTickets(usernames []string) ([]KACETicket, error) {
 
 	req, err := http.NewRequest("GET", baseURL, nil)
 	if err != nil {
-		return nil, fmt.Errorf("kace request build failed: %w", err)
+		return 0, fmt.Errorf("kace request build failed: %w", err)
 	}
 	req.URL.RawQuery = rawQuery
 
@@ -182,41 +170,23 @@ func FetchTickets(usernames []string) ([]KACETicket, error) {
 
 	resp, err := s.client.Do(req)
 	if err != nil {
-		return nil, fmt.Errorf("kace request failed: %w", err)
+		return 0, fmt.Errorf("kace request failed: %w", err)
 	}
 	defer resp.Body.Close()
 
-	// If unauthorized, clear session and retry once
 	if resp.StatusCode == http.StatusUnauthorized {
-		clearSession()
-		s, err = authenticate()
-		if err != nil {
-			return nil, fmt.Errorf("kace re-auth failed: %w", err)
-		}
-		req.Header.Set("x-kace-authorization", s.authToken)
-		resp, err = s.client.Do(req)
-		if err != nil {
-			return nil, fmt.Errorf("kace retry request failed: %w", err)
-		}
-		defer resp.Body.Close()
+		return 0, fmt.Errorf("kace returned 401")
 	}
 
 	if resp.StatusCode != http.StatusOK {
 		body, _ := io.ReadAll(resp.Body)
-		return nil, fmt.Errorf("kace returned status %d: %s", resp.StatusCode, string(body))
+		return 0, fmt.Errorf("kace returned status %d: %s", resp.StatusCode, string(body))
 	}
 
 	var kaceResp KACEResponse
 	if err := json.NewDecoder(resp.Body).Decode(&kaceResp); err != nil {
-		return nil, fmt.Errorf("kace response parse failed: %w", err)
+		return 0, fmt.Errorf("kace response parse failed: %w", err)
 	}
 
-	// Update cache
-	cacheMu.Lock()
-	cachedData = &kaceResp
-	cachedAt = time.Now()
-	cacheMu.Unlock()
-
-	log.Printf("KACE: fetched %d tickets for %d users", len(kaceResp.Tickets), len(usernames))
-	return kaceResp.Tickets, nil
+	return len(kaceResp.Tickets), nil
 }

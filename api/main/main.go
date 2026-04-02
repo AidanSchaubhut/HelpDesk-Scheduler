@@ -7,8 +7,10 @@ import (
 	"net/http"
 	"os"
 	"strings"
+	"time"
 
 	"helpdesk-scheduler/database"
+	"helpdesk-scheduler/kace"
 )
 
 // loadEnv reads a .env file and sets any variables not already in the environment.
@@ -47,6 +49,8 @@ func main() {
 
 	database.InitDB("helpdesk.db")
 	defer database.DB.Close()
+
+	kace.StartPoller(3 * time.Minute)
 
 	r := RegisterRoutes()
 

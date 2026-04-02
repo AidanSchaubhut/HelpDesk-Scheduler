@@ -105,3 +105,13 @@
       resolved_at TEXT,
       created_at TEXT NOT NULL DEFAULT (datetime('now'))
   );
+
+  -- KACE ticket counts (populated by background poller)
+
+  CREATE TABLE IF NOT EXISTS kace_tickets (
+      username TEXT PRIMARY KEY,
+      cwid TEXT NOT NULL DEFAULT '',
+      team_id TEXT NOT NULL DEFAULT '',
+      ticket_count INTEGER NOT NULL DEFAULT 0,
+      updated_at TEXT NOT NULL DEFAULT (datetime('now'))
+  );
