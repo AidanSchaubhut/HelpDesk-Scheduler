@@ -86,7 +86,7 @@ export const clearAllSchedule = () => request("DELETE", "/schedule/clear");
 export const createTimeOffRequest = (params) => request("POST", "/time-off", params);
 export const getTimeOffByStudent = (cwid) => request("GET", `/time-off/student/${cwid}`);
 export const getTimeOffByDay = (day) => request("GET", `/time-off/day/${day}`);
-export const deleteTimeOffRequest = (id, cwid) => request("DELETE", `/time-off/${id}/${cwid}`);
+export const deleteTimeOffRequest = (id) => request("DELETE", `/time-off/${id}`);
 export const getAllTimeOffRequests = () => request("GET", "/time-off/all");
 export const adminDeleteTimeOffRequest = (id) => request("DELETE", `/time-off/admin/${id}`);
 export const updateTimeOffStatus = (id, status) => request("POST", `/time-off/admin/${id}/status`, { status });

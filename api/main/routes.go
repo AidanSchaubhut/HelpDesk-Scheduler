@@ -1,6 +1,8 @@
 package main
 
 import (
+	"time"
+
 	"github.com/go-chi/chi/v5"
 	"github.com/go-chi/chi/v5/middleware"
 	"helpdesk-scheduler/auth"
@@ -11,10 +13,12 @@ func RegisterRoutes() chi.Router {
 	r := chi.NewRouter()
 	r.Use(middleware.Logger)
 
+	loginLimiter := newRateLimiter(10, time.Minute)
+
 	r.Route("/api", func(r chi.Router){
 		// Public routes
 		r.Get("/health", handlers.HealthHandler)
-		r.Post("/auth/login", handlers.Login)
+		r.With(loginLimiter.Middleware).Post("/auth/login", handlers.Login)
 
 		// Authenticated routes
 		r.Group(func(r chi.Router) {
@@ -33,7 +37,7 @@ func RegisterRoutes() chi.Router {
 				r.Post("/", handlers.CreateTimeOffRequest)
 				r.Get("/student/{cwid}", handlers.GetTimeOffByStudent)
 				r.Get("/day/{day}", handlers.GetTimeOffByDay)
-				r.Delete("/{id}/{cwid}", handlers.DeleteTimeOffRequest)
+				r.Delete("/{id}", handlers.DeleteTimeOffRequest)
 			})
 
 			// Attendance points (student view)

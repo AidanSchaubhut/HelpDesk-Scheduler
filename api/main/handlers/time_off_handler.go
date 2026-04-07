@@ -20,8 +20,12 @@ func CreateTimeOffRequest(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	if req.CWID == "" || req.Day == "" {
-		http.Error(w, "cwid and day are required", http.StatusBadRequest)
+	// Admins may specify a target CWID; students always use their own
+	if auth.GetRole(r) != "admin" || req.CWID == "" {
+		req.CWID = auth.GetCWID(r)
+	}
+	if req.Day == "" {
+		http.Error(w, "day is required", http.StatusBadRequest)
 		return
 	}
 
@@ -120,10 +124,10 @@ func AdminDeleteTimeOffRequest(w http.ResponseWriter, r *http.Request) {
 
 func DeleteTimeOffRequest(w http.ResponseWriter, r *http.Request) {
 	idStr := chi.URLParam(r, "id")
-	cwid := chi.URLParam(r, "cwid")
+	cwid := auth.GetCWID(r)
 
-	if idStr == "" || cwid == "" {
-		http.Error(w, "id and cwid are required", http.StatusBadRequest)
+	if idStr == "" {
+		http.Error(w, "id is required", http.StatusBadRequest)
 		return
 	}
 

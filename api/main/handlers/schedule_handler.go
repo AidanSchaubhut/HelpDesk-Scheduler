@@ -6,12 +6,12 @@ import (
 	"strings"
 
 	"github.com/go-chi/chi/v5"
+	"helpdesk-scheduler/auth"
 	"helpdesk-scheduler/database"
 )
 
 func SignUpForSlot(w http.ResponseWriter, r *http.Request) {
 	var req struct {
-		CWID   string `json:"cwid"`
 		TeamID string `json:"team_id"`
 		Day    string `json:"day"`
 		Slot   string `json:"slot"`
@@ -22,12 +22,13 @@ func SignUpForSlot(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	if req.CWID == "" || req.TeamID == "" || req.Day == "" || req.Slot == "" {
-		http.Error(w, "cwid, team_id, day, and slot are required", http.StatusBadRequest)
+	cwid := auth.GetCWID(r)
+	if req.TeamID == "" || req.Day == "" || req.Slot == "" {
+		http.Error(w, "team_id, day, and slot are required", http.StatusBadRequest)
 		return
 	}
 
-	if err := database.SignUpForSlot(req.CWID, req.TeamID, req.Day, req.Slot); err != nil {
+	if err := database.SignUpForSlot(cwid, req.TeamID, req.Day, req.Slot); err != nil {
 		if strings.Contains(err.Error(), "locked") {
 			http.Error(w, err.Error(), http.StatusForbidden)
 		} else if strings.Contains(err.Error(), "not assigned") {
@@ -45,7 +46,6 @@ func SignUpForSlot(w http.ResponseWriter, r *http.Request) {
 
 func RemoveFromSlot(w http.ResponseWriter, r *http.Request) {
 	var req struct {
-		CWID   string `json:"cwid"`
 		TeamID string `json:"team_id"`
 		Day    string `json:"day"`
 		Slot   string `json:"slot"`
@@ -56,12 +56,13 @@ func RemoveFromSlot(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	if req.CWID == "" || req.TeamID == "" || req.Day == "" || req.Slot == "" {
-		http.Error(w, "cwid, team_id, day, and slot are required", http.StatusBadRequest)
+	cwid := auth.GetCWID(r)
+	if req.TeamID == "" || req.Day == "" || req.Slot == "" {
+		http.Error(w, "team_id, day, and slot are required", http.StatusBadRequest)
 		return
 	}
 
-	if err := database.RemoveFromSlot(req.CWID, req.TeamID, req.Day, req.Slot); err != nil {
+	if err := database.RemoveFromSlot(cwid, req.TeamID, req.Day, req.Slot); err != nil {
 		if strings.Contains(err.Error(), "locked") {
 			http.Error(w, err.Error(), http.StatusForbidden)
 		} else if strings.Contains(err.Error(), "not found") {
@@ -127,7 +128,6 @@ func ClearAllSchedule(w http.ResponseWriter, r *http.Request) {
 
 func AutofillFromDay(w http.ResponseWriter, r *http.Request) {
 	var req struct {
-		CWID      string `json:"cwid"`
 		SourceDay string `json:"source_day"`
 		TargetDay string `json:"target_day"`
 	}
@@ -137,8 +137,9 @@ func AutofillFromDay(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	if req.CWID == "" || req.SourceDay == "" || req.TargetDay == "" {
-		http.Error(w, "cwid, source_day, and target_day are required", http.StatusBadRequest)
+	cwid := auth.GetCWID(r)
+	if req.SourceDay == "" || req.TargetDay == "" {
+		http.Error(w, "source_day and target_day are required", http.StatusBadRequest)
 		return
 	}
 
@@ -147,7 +148,7 @@ func AutofillFromDay(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	result, err := database.AutofillFromDay(req.CWID, req.SourceDay, req.TargetDay)
+	result, err := database.AutofillFromDay(cwid, req.SourceDay, req.TargetDay)
 	if err != nil {
 		if strings.Contains(err.Error(), "locked") {
 			http.Error(w, err.Error(), http.StatusForbidden)

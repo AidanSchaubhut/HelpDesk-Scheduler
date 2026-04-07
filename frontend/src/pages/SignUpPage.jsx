@@ -159,7 +159,6 @@ export default function SignUpPage({ day, showToast }) {
       try {
         if (currently) {
           await removeFromSlot({
-            cwid: user.cwid,
             team_id: teamId,
             day,
             slot,
@@ -167,7 +166,6 @@ export default function SignUpPage({ day, showToast }) {
           showToast("Removed from shift", "success");
         } else {
           await signUpForSlot({
-            cwid: user.cwid,
             team_id: teamId,
             day,
             slot,
@@ -192,7 +190,6 @@ export default function SignUpPage({ day, showToast }) {
 
     try {
       const result = await autofillFromDay({
-        cwid: user.cwid,
         source_day: autofillSource,
         target_day: day,
       });
@@ -224,7 +221,7 @@ export default function SignUpPage({ day, showToast }) {
     } finally {
       setAutofilling(false);
     }
-  }, [autofillSource, user.cwid, day, showToast, fetchSchedule]);
+  }, [autofillSource, day, showToast, fetchSchedule]);
 
   const handleClearSchedule = useCallback(async () => {
     if (locked || myShifts.length === 0) return;
@@ -235,7 +232,6 @@ export default function SignUpPage({ day, showToast }) {
     for (const shift of myShifts) {
       try {
         await removeFromSlot({
-          cwid: user.cwid,
           team_id: shift.team.id,
           day,
           slot: shift.slot,
@@ -255,7 +251,7 @@ export default function SignUpPage({ day, showToast }) {
     } else {
       showToast(`Removed ${removed}, ${failed} failed`, "error");
     }
-  }, [locked, myShifts, user.cwid, day, fetchSchedule, showToast]);
+  }, [locked, myShifts, day, fetchSchedule, showToast]);
 
   const otherDays = DAYS.filter((d) => d !== day);
   const gridCols = `130px ${teams.map(() => "1fr").join(" ")}`;

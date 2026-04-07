@@ -17,8 +17,9 @@ func CreateTimeclockRequest(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "Invalid request body", http.StatusBadRequest)
 		return
 	}
-	if params.CWID == "" || params.ShiftDate == "" || params.StartTime == "" || params.EndTime == "" || params.Reason == "" {
-		http.Error(w, "All fields are required: cwid, shift_date, start_time, end_time, reason", http.StatusBadRequest)
+	params.CWID = auth.GetCWID(r)
+	if params.ShiftDate == "" || params.StartTime == "" || params.EndTime == "" || params.Reason == "" {
+		http.Error(w, "All fields are required: shift_date, start_time, end_time, reason", http.StatusBadRequest)
 		return
 	}
 

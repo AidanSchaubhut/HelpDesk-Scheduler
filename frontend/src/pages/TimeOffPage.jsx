@@ -275,25 +275,6 @@ function RequestRow({ group, deletingId, onDelete }) {
           <div style={styles.reasonText}>{group.reason}</div>
         )}
       </div>
-      <button
-        onClick={() => onDelete(group.ids)}
-        disabled={isDeleting}
-        style={{
-          ...styles.deleteBtn,
-          opacity: isDeleting ? 0.4 : 1,
-        }}
-        title="Remove request"
-        onMouseEnter={(e) => {
-          e.currentTarget.style.color = "#DC2626";
-          e.currentTarget.style.background = "#FEF2F2";
-        }}
-        onMouseLeave={(e) => {
-          e.currentTarget.style.color = "#94A3B8";
-          e.currentTarget.style.background = "none";
-        }}
-      >
-        <Icons.Trash />
-      </button>
     </div>
   );
 }
@@ -386,7 +367,6 @@ export default function TimeOffPage({ showToast }) {
     try {
       if (timeType === "full") {
         await createTimeOffRequest({
-          cwid: user.cwid,
           day: selectedDay,
           slot: null,
           effective_date: effectiveDate,
@@ -399,7 +379,6 @@ export default function TimeOffPage({ showToast }) {
         for (const slot of selectedSlots) {
           try {
             await createTimeOffRequest({
-              cwid: user.cwid,
               day: selectedDay,
               slot,
               effective_date: effectiveDate,
@@ -443,7 +422,7 @@ export default function TimeOffPage({ showToast }) {
     setDeletingId(deleteKey);
     try {
       for (const id of ids) {
-        await deleteTimeOffRequest(id, user.cwid);
+        await deleteTimeOffRequest(id);
       }
       showToast("Time off request removed", "success");
       await fetchRequests();

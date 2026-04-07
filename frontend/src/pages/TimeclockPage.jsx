@@ -52,7 +52,6 @@ export default function TimeclockPage({ showToast }) {
     setSubmitting(true);
     try {
       await createTimeclockRequest({
-        cwid: user.cwid,
         shift_date: shiftDate,
         start_time: startTime,
         end_time: endTime,
