@@ -146,6 +146,25 @@ func GetScheduledStudentsByDay(day string) ([]ScheduledStudent, error) {
 	return result, rows.Err()
 }
 
+func GetAllStudentSlotCounts() (map[string]int, error) {
+	rows, err := DB.Query("SELECT cwid, COUNT(*) FROM schedule GROUP BY cwid")
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	counts := make(map[string]int)
+	for rows.Next() {
+		var cwid string
+		var count int
+		if err := rows.Scan(&cwid, &count); err != nil {
+			return nil, err
+		}
+		counts[cwid] = count
+	}
+	return counts, rows.Err()
+}
+
 func ClearAllSchedule() (int64, error) {
 	result, err := DB.Exec("DELETE FROM schedule")
 	if err != nil {

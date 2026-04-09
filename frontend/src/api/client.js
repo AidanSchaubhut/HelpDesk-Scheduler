@@ -81,6 +81,7 @@ export const autofillFromDay = (params) => request("POST", "/schedule/autofill",
 export const getScheduleLock = () => request("GET", "/schedule/lock");
 export const setScheduleLock = (locked) => request("PUT", "/schedule/lock", { locked });
 export const clearAllSchedule = () => request("DELETE", "/schedule/clear");
+export const getStudentSlotCounts = () => request("GET", "/schedule/slot-counts");
 
 // Time Off
 export const createTimeOffRequest = (params) => request("POST", "/time-off", params);

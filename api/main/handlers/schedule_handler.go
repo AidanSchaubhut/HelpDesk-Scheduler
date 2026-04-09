@@ -10,6 +10,16 @@ import (
 	"helpdesk-scheduler/database"
 )
 
+func GetAllStudentSlotCounts(w http.ResponseWriter, r *http.Request) {
+	counts, err := database.GetAllStudentSlotCounts()
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(counts)
+}
+
 func SignUpForSlot(w http.ResponseWriter, r *http.Request) {
 	var req struct {
 		TeamID string `json:"team_id"`

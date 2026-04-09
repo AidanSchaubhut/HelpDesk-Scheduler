@@ -39,6 +39,7 @@ import {
   createAttendancePoint,
   deleteAttendancePoint,
   setStudentPin,
+  getStudentSlotCounts,
 } from "../api/client";
 
 export default function AdminPage({ showToast }) {
@@ -59,6 +60,7 @@ export default function AdminPage({ showToast }) {
   const [teamHours, setTeamHours] = useState([]);
   const [pointsSummary, setPointsSummary] = useState([]);
   const [attendancePoints, setAttendancePoints] = useState([]);
+  const [slotCounts, setSlotCounts] = useState({});
   const [showClearConfirm, setShowClearConfirm] = useState(false);
   const [clearing, setClearing] = useState(false);
 
@@ -66,7 +68,7 @@ export default function AdminPage({ showToast }) {
   const fetchAll = useCallback(async () => {
     setLoading(true);
     try {
-      const [studentsData, teamsData, assignmentsData, badgesData, studentBadgesData, lockData, timeOffData, absenceData, timeclockData, teamHoursData, pointsSummaryData, attendancePointsData] = await Promise.all([
+      const [studentsData, teamsData, assignmentsData, badgesData, studentBadgesData, lockData, timeOffData, absenceData, timeclockData, teamHoursData, pointsSummaryData, attendancePointsData, slotCountsData] = await Promise.all([
         getAllStudents(),
         getAllTeams(),
         getAllAssignments(),
@@ -79,6 +81,7 @@ export default function AdminPage({ showToast }) {
         getAllTeamHours(),
         getPointsSummary(),
         getAllAttendancePoints(),
+        getStudentSlotCounts(),
       ]);
       setStudents(studentsData || []);
       setTeams(teamsData || []);
@@ -92,6 +95,7 @@ export default function AdminPage({ showToast }) {
       setTeamHours(teamHoursData || []);
       setPointsSummary(pointsSummaryData || []);
       setAttendancePoints(attendancePointsData || []);
+      setSlotCounts(slotCountsData || {});
     } catch (err) {
       console.error("Failed to load admin data:", err);
       showToast("Failed to load data", "error");
@@ -237,6 +241,7 @@ export default function AdminPage({ showToast }) {
           assignments={assignments}
           badges={badges}
           studentBadges={studentBadges}
+          slotCounts={slotCounts}
           showToast={showToast}
           onRefresh={fetchAll}
         />
@@ -300,7 +305,7 @@ export default function AdminPage({ showToast }) {
 /* ------------------------------------------------------------------ */
 /*  Students Tab                                                       */
 /* ------------------------------------------------------------------ */
-function StudentsTab({ students, teams, assignments, _badges, studentBadges, showToast, onRefresh }) {
+function StudentsTab({ students, teams, assignments, _badges, studentBadges, slotCounts, showToast, onRefresh }) {
   const [search, setSearch] = useState("");
   const [formName, setFormName] = useState("");
   const [formCwid, setFormCwid] = useState("");
@@ -506,13 +511,14 @@ function StudentsTab({ students, teams, assignments, _badges, studentBadges, sho
               <th style={styles.th}>CWID</th>
               <th style={styles.th}>Role</th>
               <th style={styles.th}>Teams</th>
+              <th style={{ ...styles.th, textAlign: "center" }}>Hours</th>
               <th style={{ ...styles.th, textAlign: "right" }}>Actions</th>
             </tr>
           </thead>
           <tbody>
             {filtered.length === 0 ? (
               <tr>
-                <td colSpan={5} style={styles.emptyRow}>
+                <td colSpan={6} style={styles.emptyRow}>
                   No students found
                 </td>
               </tr>
@@ -574,6 +580,21 @@ function StudentsTab({ students, teams, assignments, _badges, studentBadges, sho
                           <span style={styles.noTeams}>None</span>
                         )}
                       </div>
+                    </td>
+                    <td style={{ ...styles.td, textAlign: "center" }}>
+                      {(() => {
+                        const slots = slotCounts[student.cwid] || 0;
+                        const hours = slots * 0.5;
+                        return (
+                          <span style={{
+                            fontWeight: 600,
+                            color: slots === 0 ? "#94A3B8" : "#1E293B",
+                            fontSize: 14,
+                          }}>
+                            {hours % 1 === 0 ? hours : hours.toFixed(1)}
+                          </span>
+                        );
+                      })()}
                     </td>
                     <td style={{ ...styles.td, textAlign: "right" }}>
                       <div style={styles.actions}>
