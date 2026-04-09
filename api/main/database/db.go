@@ -83,14 +83,6 @@ func runMigrations() {
 		updated_at TEXT NOT NULL DEFAULT (datetime('now'))
 	)`)
 
-	// Clean up expired date-specific time-off requests
-	result, err := DB.Exec("DELETE FROM time_off_requests WHERE effective_date IS NOT NULL AND effective_date < date('now')")
-	if err != nil {
-		log.Printf("Warning: failed to clean up expired time-off requests: %v", err)
-	} else if n, _ := result.RowsAffected(); n > 0 {
-		log.Printf("Cleaned up %d expired time-off requests", n)
-	}
-
 	// Seed default admin account (CWID: 00000000, PIN: 1234)
 	// INSERT OR IGNORE ensures this only runs if the account doesn't already exist
 	pinHash, _ := bcrypt.GenerateFromPassword([]byte("1234"), bcrypt.DefaultCost)
