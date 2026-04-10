@@ -2,6 +2,7 @@ package handlers
 
 import (
 	"encoding/json"
+	"fmt"
 	"net/http"
 	"strconv"
 	"strings"
@@ -10,6 +11,7 @@ import (
 	"helpdesk-scheduler/auth"
 	"helpdesk-scheduler/database"
 	"helpdesk-scheduler/models"
+	"helpdesk-scheduler/slack"
 )
 
 func CreateTimeOffRequest(w http.ResponseWriter, r *http.Request) {
@@ -184,6 +186,21 @@ func UpdateTimeOffStatus(w http.ResponseWriter, r *http.Request) {
 	if err := database.UpdateTimeOffStatus(id, req.Status, adminCWID); err != nil {
 		http.Error(w, "Failed to update time off status", http.StatusInternalServerError)
 		return
+	}
+
+	if req.Status == "excused" || req.Status == "unexcused" {
+		if cwid, day, date, err := database.GetTimeOffCWID(id); err == nil {
+			if student, err := database.GetStudent(cwid); err == nil && student.User_ID != "" {
+				detail := day
+				if date != "" {
+					detail = fmt.Sprintf("%s (%s)", day, date)
+				}
+				go slack.Notify(slack.Message{
+					Channel:     student.User_ID + "@latech.edu",
+					MessageText: fmt.Sprintf("Your time-off request for *%s* has been marked *%s*.", detail, req.Status),
+				})
+			}
+		}
 	}
 
 	w.Header().Set("Content-Type", "application/json")

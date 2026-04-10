@@ -2,6 +2,7 @@ package handlers
 
 import (
 	"encoding/json"
+	"fmt"
 	"net/http"
 	"strconv"
 
@@ -9,6 +10,7 @@ import (
 	"helpdesk-scheduler/auth"
 	"helpdesk-scheduler/database"
 	"helpdesk-scheduler/models"
+	"helpdesk-scheduler/slack"
 )
 
 func CreateTimeclockRequest(w http.ResponseWriter, r *http.Request) {
@@ -80,6 +82,15 @@ func ResolveTimeclockRequest(w http.ResponseWriter, r *http.Request) {
 	if err := database.ResolveTimeclockRequest(id, adminCWID, params.AdminNotes); err != nil {
 		http.Error(w, err.Error(), http.StatusNotFound)
 		return
+	}
+
+	if cwid, shiftDate, err := database.GetTimeclockCWID(id); err == nil {
+		if student, err := database.GetStudent(cwid); err == nil && student.User_ID != "" {
+			go slack.Notify(slack.Message{
+				Channel:     student.User_ID + "@latech.edu",
+				MessageText: fmt.Sprintf("Your timeclock correction request for *%s* has been resolved.", shiftDate),
+			})
+		}
 	}
 
 	w.Header().Set("Content-Type", "application/json")

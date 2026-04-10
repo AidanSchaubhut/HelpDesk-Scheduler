@@ -139,6 +139,11 @@ func GetAbsenceCountsByStudent(cwid string) (excused, unexcused, pending, total 
 	return
 }
 
+func GetTimeOffCWID(id int) (cwid, day, effectiveDate string, err error) {
+	err = DB.QueryRow("SELECT cwid, day, COALESCE(effective_date, '') FROM time_off_requests WHERE id = ?", id).Scan(&cwid, &day, &effectiveDate)
+	return
+}
+
 func GetAllAbsenceCounts() ([]models.StudentAbsenceCount, error) {
 	rows, err := DB.Query(`
 		SELECT s.cwid, s.name,

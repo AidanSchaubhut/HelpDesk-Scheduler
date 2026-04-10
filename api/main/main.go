@@ -11,6 +11,7 @@ import (
 
 	"helpdesk-scheduler/database"
 	"helpdesk-scheduler/kace"
+	"helpdesk-scheduler/slack"
 )
 
 // loadEnv reads a .env file and sets any variables not already in the environment.
@@ -51,6 +52,7 @@ func main() {
 	defer database.DB.Close()
 
 	kace.StartPoller(3 * time.Minute)
+	slack.Init()
 
 	r := RegisterRoutes()
 

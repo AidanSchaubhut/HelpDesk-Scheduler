@@ -70,6 +70,11 @@ func GetAllTimeclockRequests() ([]models.TimeclockRequestDetail, error) {
 	return requests, rows.Err()
 }
 
+func GetTimeclockCWID(id int64) (cwid, shiftDate string, err error) {
+	err = DB.QueryRow("SELECT cwid, shift_date FROM timeclock_requests WHERE id = ?", id).Scan(&cwid, &shiftDate)
+	return
+}
+
 func ResolveTimeclockRequest(id int64, adminCWID string, notes string) error {
 	result, err := DB.Exec(
 		`UPDATE timeclock_requests
