@@ -38,6 +38,7 @@ export const login = (cwid, pin) => request("POST", "/auth/login", { cwid, pin }
 export const getAllStudents = () => request("GET", "/students");
 export const getStudent = (cwid) => request("GET", `/students/${cwid}`);
 export const createStudent = (params) => request("POST", "/students", params);
+export const updateStudent = (cwid, params) => request("PUT", `/students/${cwid}`, params);
 export const deleteStudent = (cwid) => request("DELETE", `/students/${cwid}`);
 export const assignStudentRole = (cwid, role) => request("POST", `/students/assign/${cwid}/${role}`);
 export const setStudentPin = (cwid, pin) => request("PUT", `/students/${cwid}/pin`, { pin });

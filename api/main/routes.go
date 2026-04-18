@@ -64,6 +64,7 @@ func RegisterRoutes() chi.Router {
 				r.Get("/students", handlers.GetAllStudents)
 				r.Post("/students", handlers.CreateStudent)
 				r.Post("/students/import", handlers.ImportStudents)
+				r.Put("/students/{cwid}", handlers.UpdateStudent)
 				r.Delete("/students/{cwid}", handlers.DeleteStudent)
 				r.Post("/students/assign/{cwid}/{role}", handlers.AssignStudentRole)
 				r.Put("/students/{cwid}/pin", handlers.SetStudentPin)

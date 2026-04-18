@@ -75,6 +75,21 @@ func DeleteStudent(cwid string) error {
 	return nil
 }
 
+func UpdateStudent(cwid string, params models.UpdateStudentParams) error {
+	result, err := DB.Exec("UPDATE students SET name = ?, user_id = ? WHERE cwid = ?", params.Name, params.User_ID, cwid)
+	if err != nil {
+		return err
+	}
+	rows, err := result.RowsAffected()
+	if err != nil {
+		return err
+	}
+	if rows == 0 {
+		return fmt.Errorf("student %s not found", cwid)
+	}
+	return nil
+}
+
 func GetStudentPinHash(cwid string) (string, error) {
 	var pinHash string
 	err := DB.QueryRow("SELECT COALESCE(pin_hash, '') FROM students WHERE cwid = ?", cwid).Scan(&pinHash)

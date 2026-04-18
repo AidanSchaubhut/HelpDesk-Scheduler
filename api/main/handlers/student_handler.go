@@ -129,6 +129,36 @@ func SetStudentPin(w http.ResponseWriter, r *http.Request) {
 	w.WriteHeader(http.StatusOK)
 }
 
+func UpdateStudent(w http.ResponseWriter, r *http.Request) {
+	cwid := chi.URLParam(r, "cwid")
+	if cwid == "" {
+		http.Error(w, "CWID is required", http.StatusBadRequest)
+		return
+	}
+
+	var req models.UpdateStudentParams
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		http.Error(w, "Invalid Request Body", http.StatusBadRequest)
+		return
+	}
+
+	if req.Name == "" || req.User_ID == "" {
+		http.Error(w, "Name and User ID are required", http.StatusBadRequest)
+		return
+	}
+
+	if err := database.UpdateStudent(cwid, req); err != nil {
+		if strings.Contains(err.Error(), "not found") {
+			http.Error(w, err.Error(), http.StatusNotFound)
+		} else {
+			http.Error(w, "Failed to update student", http.StatusInternalServerError)
+		}
+		return
+	}
+
+	w.WriteHeader(http.StatusOK)
+}
+
 func DeleteStudent(w http.ResponseWriter, r *http.Request) {
 	cwid := chi.URLParam(r, "cwid")
 	if cwid == "" {

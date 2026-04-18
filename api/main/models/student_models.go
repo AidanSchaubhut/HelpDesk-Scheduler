@@ -14,3 +14,8 @@ type CreateStudentParams struct {
 	Pin     string `json:"pin"`
 	PinHash string `json:"-"`
 }
+
+type UpdateStudentParams struct {
+	Name    string `json:"name"`
+	User_ID string `json:"user_id"`
+}

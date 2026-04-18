@@ -39,6 +39,7 @@ import {
   createAttendancePoint,
   deleteAttendancePoint,
   setStudentPin,
+  updateStudent,
   getStudentSlotCounts,
 } from "../api/client";
 
@@ -312,6 +313,9 @@ function StudentsTab({ students, teams, assignments, _badges, studentBadges, slo
   const [formUserId, setFormUserId] = useState("");
   const [formPin, setFormPin] = useState("");
   const [showForm, setShowForm] = useState(false);
+  const [editingCwid, setEditingCwid] = useState(null);
+  const [editName, setEditName] = useState("");
+  const [editUserId, setEditUserId] = useState("");
 
   // Build team map for display
   const teamMap = useMemo(() => {
@@ -428,6 +432,33 @@ function StudentsTab({ students, teams, assignments, _badges, studentBadges, slo
     e.target.value = "";
   };
 
+  const handleStartEdit = (student) => {
+    setEditingCwid(student.cwid);
+    setEditName(student.name);
+    setEditUserId(student.user_id);
+  };
+
+  const handleCancelEdit = () => {
+    setEditingCwid(null);
+    setEditName("");
+    setEditUserId("");
+  };
+
+  const handleSaveEdit = async () => {
+    if (!editName.trim() || !editUserId.trim()) {
+      showToast("Name and User ID are required", "error");
+      return;
+    }
+    try {
+      await updateStudent(editingCwid, { name: editName.trim(), user_id: editUserId.trim() });
+      showToast("Student updated", "success");
+      handleCancelEdit();
+      await onRefresh();
+    } catch (err) {
+      showToast("Failed to update student: " + err.message, "error");
+    }
+  };
+
   return (
     <div>
       {/* Header row */}
@@ -509,6 +540,7 @@ function StudentsTab({ students, teams, assignments, _badges, studentBadges, slo
             <tr>
               <th style={styles.th}>Name</th>
               <th style={styles.th}>CWID</th>
+              <th style={styles.th}>User ID</th>
               <th style={styles.th}>Role</th>
               <th style={styles.th}>Teams</th>
               <th style={{ ...styles.th, textAlign: "center" }}>Hours</th>
@@ -518,7 +550,7 @@ function StudentsTab({ students, teams, assignments, _badges, studentBadges, slo
           <tbody>
             {filtered.length === 0 ? (
               <tr>
-                <td colSpan={6} style={styles.emptyRow}>
+                <td colSpan={7} style={styles.emptyRow}>
                   No students found
                 </td>
               </tr>
@@ -532,7 +564,18 @@ function StudentsTab({ students, teams, assignments, _badges, studentBadges, slo
                       <div style={styles.nameCell}>
                         <div style={styles.avatar}>{initial}</div>
                         <div>
-                          <span style={styles.nameText}>{student.name}</span>
+                          {editingCwid === student.cwid ? (
+                            <input
+                              type="text"
+                              value={editName}
+                              onChange={(e) => setEditName(e.target.value)}
+                              style={{ ...styles.formInput, margin: 0, padding: "4px 8px", fontSize: 14, width: 160 }}
+                              autoFocus
+                              onKeyDown={(e) => { if (e.key === "Enter") handleSaveEdit(); if (e.key === "Escape") handleCancelEdit(); }}
+                            />
+                          ) : (
+                            <span style={styles.nameText}>{student.name}</span>
+                          )}
                           {(studentBadgeMap[student.cwid] || []).length > 0 && (
                             <div style={{ display: "flex", flexWrap: "wrap", gap: 3, marginTop: 3 }}>
                               {studentBadgeMap[student.cwid].map((b) => (
@@ -551,6 +594,19 @@ function StudentsTab({ students, teams, assignments, _badges, studentBadges, slo
                     </td>
                     <td style={styles.td}>
                       <span style={styles.cwid}>{student.cwid}</span>
+                    </td>
+                    <td style={styles.td}>
+                      {editingCwid === student.cwid ? (
+                        <input
+                          type="text"
+                          value={editUserId}
+                          onChange={(e) => setEditUserId(e.target.value)}
+                          style={{ ...styles.formInput, margin: 0, padding: "4px 8px", fontSize: 14, width: 120 }}
+                          onKeyDown={(e) => { if (e.key === "Enter") handleSaveEdit(); if (e.key === "Escape") handleCancelEdit(); }}
+                        />
+                      ) : (
+                        <span style={{ fontSize: 13, color: "#64748B" }}>{student.user_id}</span>
+                      )}
                     </td>
                     <td style={styles.td}>
                       <span style={student.role === "admin" ? styles.roleAdmin : styles.roleStudent}>
@@ -598,30 +654,58 @@ function StudentsTab({ students, teams, assignments, _badges, studentBadges, slo
                     </td>
                     <td style={{ ...styles.td, textAlign: "right" }}>
                       <div style={styles.actions}>
-                        <button
-                          onClick={() => handleSetPin(student.cwid, student.name)}
-                          title="Set PIN"
-                          style={{ ...styles.iconBtn, color: "#D97706" }}
-                        >
-                          <Icons.Lock />
-                        </button>
-                        <button
-                          onClick={() => handleToggleRole(student.cwid, student.role)}
-                          title={student.role === "admin" ? "Demote to student" : "Promote to admin"}
-                          style={{
-                            ...styles.iconBtn,
-                            color: student.role === "admin" ? "#7C3AED" : "#64748B",
-                          }}
-                        >
-                          <Icons.Shield />
-                        </button>
-                        <button
-                          onClick={() => handleDelete(student.cwid, student.name)}
-                          title="Delete student"
-                          style={{ ...styles.iconBtn, color: "#EF4444" }}
-                        >
-                          <Icons.Trash />
-                        </button>
+                        {editingCwid === student.cwid ? (
+                          <>
+                            <button
+                              onClick={handleSaveEdit}
+                              title="Save changes"
+                              style={{ ...styles.iconBtn, color: "#10B981" }}
+                            >
+                              <Icons.Check />
+                            </button>
+                            <button
+                              onClick={handleCancelEdit}
+                              title="Cancel editing"
+                              style={{ ...styles.iconBtn, color: "#64748B" }}
+                            >
+                              <Icons.X />
+                            </button>
+                          </>
+                        ) : (
+                          <>
+                            <button
+                              onClick={() => handleStartEdit(student)}
+                              title="Edit student"
+                              style={{ ...styles.iconBtn, color: "#3B82F6" }}
+                            >
+                              <Icons.Edit />
+                            </button>
+                            <button
+                              onClick={() => handleSetPin(student.cwid, student.name)}
+                              title="Set PIN"
+                              style={{ ...styles.iconBtn, color: "#D97706" }}
+                            >
+                              <Icons.Lock />
+                            </button>
+                            <button
+                              onClick={() => handleToggleRole(student.cwid, student.role)}
+                              title={student.role === "admin" ? "Demote to student" : "Promote to admin"}
+                              style={{
+                                ...styles.iconBtn,
+                                color: student.role === "admin" ? "#7C3AED" : "#64748B",
+                              }}
+                            >
+                              <Icons.Shield />
+                            </button>
+                            <button
+                              onClick={() => handleDelete(student.cwid, student.name)}
+                              title="Delete student"
+                              style={{ ...styles.iconBtn, color: "#EF4444" }}
+                            >
+                              <Icons.Trash />
+                            </button>
+                          </>
+                        )}
                       </div>
                     </td>
                   </tr>
