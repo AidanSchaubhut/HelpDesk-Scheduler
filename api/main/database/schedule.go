@@ -165,6 +165,30 @@ func GetAllStudentSlotCounts() (map[string]int, error) {
 	return counts, rows.Err()
 }
 
+// GetAllScheduleEntries returns every schedule entry joined with student name, ordered for CSV export.
+func GetAllScheduleEntries() ([]models.ScheduleEntry, error) {
+	rows, err := DB.Query(`
+		SELECT s.cwid, s.team_id, s.day, s.slot, st.name
+		FROM schedule s
+		JOIN students st ON s.cwid = st.cwid
+		ORDER BY st.name, s.day, s.slot
+	`)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	var entries []models.ScheduleEntry
+	for rows.Next() {
+		var e models.ScheduleEntry
+		if err := rows.Scan(&e.CWID, &e.TeamID, &e.Day, &e.Slot, &e.StudentName); err != nil {
+			return nil, err
+		}
+		entries = append(entries, e)
+	}
+	return entries, rows.Err()
+}
+
 func ClearAllSchedule() (int64, error) {
 	result, err := DB.Exec("DELETE FROM schedule")
 	if err != nil {

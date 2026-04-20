@@ -84,6 +84,21 @@ export const setScheduleLock = (locked) => request("PUT", "/schedule/lock", { lo
 export const clearAllSchedule = () => request("DELETE", "/schedule/clear");
 export const getStudentSlotCounts = () => request("GET", "/schedule/slot-counts");
 
+export async function exportScheduleCSV() {
+  const token = localStorage.getItem("token");
+  const res = await fetch(`${API_BASE}/schedule/export-csv`, {
+    headers: { Authorization: `Bearer ${token}` },
+  });
+  if (!res.ok) throw new Error("Failed to export schedule");
+  const blob = await res.blob();
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement("a");
+  a.href = url;
+  a.download = "schedule_export.csv";
+  a.click();
+  URL.revokeObjectURL(url);
+}
+
 // Time Off
 export const createTimeOffRequest = (params) => request("POST", "/time-off", params);
 export const getTimeOffByStudent = (cwid) => request("GET", `/time-off/student/${cwid}`);

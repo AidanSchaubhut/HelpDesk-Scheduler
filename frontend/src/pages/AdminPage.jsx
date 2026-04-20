@@ -41,6 +41,7 @@ import {
   setStudentPin,
   updateStudent,
   getStudentSlotCounts,
+  exportScheduleCSV,
 } from "../api/client";
 
 export default function AdminPage({ showToast }) {
@@ -182,6 +183,24 @@ export default function AdminPage({ showToast }) {
           ))}
         </div>
         <div className="admin-actions" style={{ display: "flex", gap: 8, alignItems: "center" }}>
+          <button
+            onClick={async () => {
+              try {
+                await exportScheduleCSV();
+                showToast("Schedule CSV downloaded", "success");
+              } catch {
+                showToast("Failed to export schedule", "error");
+              }
+            }}
+            style={{
+              display: "flex", alignItems: "center", gap: 6,
+              padding: "8px 16px", borderRadius: 8, border: "1px solid #CBD5E1",
+              background: "#F8FAFC", color: "#334155", fontSize: 13,
+              fontWeight: 500, cursor: "pointer",
+            }}
+          >
+            <Icons.Download /> Export CSV
+          </button>
           <button
             onClick={() => setShowClearConfirm(true)}
             style={styles.clearBtn}
