@@ -2,6 +2,7 @@ package handlers
 
 import (
 	"encoding/json"
+	"fmt"
 	"net/http"
 	"strconv"
 	"strings"
@@ -10,6 +11,7 @@ import (
 	"helpdesk-scheduler/auth"
 	"helpdesk-scheduler/database"
 	"helpdesk-scheduler/models"
+	"helpdesk-scheduler/slack"
 )
 
 func CreateAttendancePoint(w http.ResponseWriter, r *http.Request) {
@@ -30,6 +32,16 @@ func CreateAttendancePoint(w http.ResponseWriter, r *http.Request) {
 	if err != nil {
 		http.Error(w, "Failed to create attendance point", http.StatusInternalServerError)
 		return
+	}
+
+	if settings, err := database.GetNotificationSettings(); err == nil && settings.AttendanceNotify {
+		if student, err := database.GetStudent(req.CWID); err == nil && student.User_ID != "" {
+			pointLabel := fmt.Sprintf("%g", req.Points)
+			go slack.Notify(slack.Message{
+				Channel:     student.User_ID + "@latech.edu",
+				MessageText: fmt.Sprintf("You have received *%s* attendance point(s): %s", pointLabel, req.Reason),
+			})
+		}
 	}
 
 	w.Header().Set("Content-Type", "application/json")

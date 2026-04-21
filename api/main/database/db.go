@@ -83,6 +83,16 @@ func runMigrations() {
 		updated_at TEXT NOT NULL DEFAULT (datetime('now'))
 	)`)
 
+	// Create notification_settings table if it doesn't exist (for existing databases)
+	_, _ = DB.Exec(`CREATE TABLE IF NOT EXISTS notification_settings (
+		id INTEGER PRIMARY KEY CHECK (id = 1),
+		time_off_notify BOOLEAN NOT NULL DEFAULT 1,
+		timeclock_notify BOOLEAN NOT NULL DEFAULT 1,
+		attendance_notify BOOLEAN NOT NULL DEFAULT 1
+	)`)
+	_, _ = DB.Exec(`INSERT OR IGNORE INTO notification_settings (id, time_off_notify, timeclock_notify, attendance_notify) VALUES (1, 1, 1, 1)`)
+	_, _ = DB.Exec("ALTER TABLE notification_settings ADD COLUMN attendance_notify BOOLEAN NOT NULL DEFAULT 1")
+
 	// Seed default admin account (CWID: 00000000, PIN: 1234)
 	// INSERT OR IGNORE ensures this only runs if the account doesn't already exist
 	pinHash, _ := bcrypt.GenerateFromPassword([]byte("1234"), bcrypt.DefaultCost)

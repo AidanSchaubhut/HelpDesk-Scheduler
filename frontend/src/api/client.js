@@ -84,6 +84,10 @@ export const setScheduleLock = (locked) => request("PUT", "/schedule/lock", { lo
 export const clearAllSchedule = () => request("DELETE", "/schedule/clear");
 export const getStudentSlotCounts = () => request("GET", "/schedule/slot-counts");
 
+// Notification Settings
+export const getNotificationSettings = () => request("GET", "/notification-settings");
+export const setNotificationSettings = (settings) => request("PUT", "/notification-settings", settings);
+
 export async function exportScheduleCSV() {
   const token = localStorage.getItem("token");
   const res = await fetch(`${API_BASE}/schedule/export-csv`, {

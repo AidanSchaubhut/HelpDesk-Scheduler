@@ -106,6 +106,16 @@
       created_at TEXT NOT NULL DEFAULT (datetime('now'))
   );
 
+  -- Notification settings (single-row table)
+
+  CREATE TABLE IF NOT EXISTS notification_settings (
+      id INTEGER PRIMARY KEY CHECK (id = 1),
+      time_off_notify BOOLEAN NOT NULL DEFAULT 1,
+      timeclock_notify BOOLEAN NOT NULL DEFAULT 1
+  );
+
+  INSERT OR IGNORE INTO notification_settings (id, time_off_notify, timeclock_notify) VALUES (1, 1, 1);
+
   -- KACE ticket counts (populated by background poller)
 
   CREATE TABLE IF NOT EXISTS kace_tickets (

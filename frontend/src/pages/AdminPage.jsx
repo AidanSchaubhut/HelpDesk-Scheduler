@@ -42,6 +42,8 @@ import {
   updateStudent,
   getStudentSlotCounts,
   generateTimeclockReport,
+  getNotificationSettings,
+  setNotificationSettings,
 } from "../api/client";
 
 export default function AdminPage({ showToast }) {
@@ -63,6 +65,7 @@ export default function AdminPage({ showToast }) {
   const [pointsSummary, setPointsSummary] = useState([]);
   const [attendancePoints, setAttendancePoints] = useState([]);
   const [slotCounts, setSlotCounts] = useState({});
+  const [notifSettings, setNotifSettings] = useState({ time_off_notify: true, timeclock_notify: true, attendance_notify: true });
   const [showClearConfirm, setShowClearConfirm] = useState(false);
   const [clearing, setClearing] = useState(false);
   const timeclockFileRef = useRef(null);
@@ -71,7 +74,7 @@ export default function AdminPage({ showToast }) {
   const fetchAll = useCallback(async () => {
     setLoading(true);
     try {
-      const [studentsData, teamsData, assignmentsData, badgesData, studentBadgesData, lockData, timeOffData, absenceData, timeclockData, teamHoursData, pointsSummaryData, attendancePointsData, slotCountsData] = await Promise.all([
+      const [studentsData, teamsData, assignmentsData, badgesData, studentBadgesData, lockData, timeOffData, absenceData, timeclockData, teamHoursData, pointsSummaryData, attendancePointsData, slotCountsData, notifData] = await Promise.all([
         getAllStudents(),
         getAllTeams(),
         getAllAssignments(),
@@ -85,6 +88,7 @@ export default function AdminPage({ showToast }) {
         getPointsSummary(),
         getAllAttendancePoints(),
         getStudentSlotCounts(),
+        getNotificationSettings(),
       ]);
       setStudents(studentsData || []);
       setTeams(teamsData || []);
@@ -99,6 +103,7 @@ export default function AdminPage({ showToast }) {
       setPointsSummary(pointsSummaryData || []);
       setAttendancePoints(attendancePointsData || []);
       setSlotCounts(slotCountsData || {});
+      if (notifData) setNotifSettings(notifData);
     } catch (err) {
       console.error("Failed to load admin data:", err);
       showToast("Failed to load data", "error");
@@ -164,6 +169,7 @@ export default function AdminPage({ showToast }) {
     { key: "timeoff", label: "Time Off", icon: <Icons.Calendar /> },
     { key: "timeclock", label: "Time Clock", icon: <Icons.Clock /> },
     { key: "attendance", label: "Attendance", icon: <Icons.AlertCircle /> },
+    { key: "settings", label: "Settings", icon: <Icons.Settings /> },
   ];
 
   return (
@@ -336,6 +342,13 @@ export default function AdminPage({ showToast }) {
           history={attendancePoints}
           showToast={showToast}
           onRefresh={fetchAll}
+        />
+      )}
+      {activeTab === "settings" && (
+        <SettingsTab
+          settings={notifSettings}
+          setSettings={setNotifSettings}
+          showToast={showToast}
         />
       )}
     </div>
@@ -2691,6 +2704,83 @@ function AttendanceTab({ students, summary, history, showToast, onRefresh }) {
             </tbody>
           </table>
         </div>
+      </div>
+    </div>
+  );
+}
+
+/* ------------------------------------------------------------------ */
+/*  Settings Tab                                                       */
+/* ------------------------------------------------------------------ */
+function SettingsTab({ settings, setSettings, showToast }) {
+  const handleToggle = async (key) => {
+    const updated = { ...settings, [key]: !settings[key] };
+    try {
+      await setNotificationSettings(updated);
+      setSettings(updated);
+      showToast("Notification settings updated", "success");
+    } catch {
+      showToast("Failed to update settings", "error");
+    }
+  };
+
+  const toggles = [
+    {
+      key: "time_off_notify",
+      label: "Time-Off Updates",
+      description: "Notify students via Slack when their time-off request is marked excused or unexcused",
+    },
+    {
+      key: "timeclock_notify",
+      label: "Timeclock Resolutions",
+      description: "Notify students via Slack when their timeclock correction request is resolved",
+    },
+    {
+      key: "attendance_notify",
+      label: "Attendance Points",
+      description: "Notify students via Slack when they receive attendance points",
+    },
+  ];
+
+  return (
+    <div style={{ padding: "20px 0" }}>
+      <h3 style={{ fontSize: 16, fontWeight: 600, color: "#1E293B", marginBottom: 20 }}>
+        Slack Notifications
+      </h3>
+      <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
+        {toggles.map((t) => (
+          <div
+            key={t.key}
+            style={{
+              display: "flex", alignItems: "center", justifyContent: "space-between",
+              padding: "16px 20px", background: "#F8FAFC", borderRadius: 10,
+              border: "1px solid #E2E8F0",
+            }}
+          >
+            <div>
+              <div style={{ fontSize: 14, fontWeight: 600, color: "#1E293B" }}>{t.label}</div>
+              <div style={{ fontSize: 12, color: "#64748B", marginTop: 2 }}>{t.description}</div>
+            </div>
+            <button
+              onClick={() => handleToggle(t.key)}
+              style={{
+                width: 44, height: 24, borderRadius: 12, border: "none", cursor: "pointer",
+                background: settings[t.key] ? "#3B82F6" : "#CBD5E1",
+                position: "relative", transition: "background 0.2s",
+              }}
+            >
+              <div
+                style={{
+                  width: 18, height: 18, borderRadius: "50%", background: "#fff",
+                  position: "absolute", top: 3,
+                  left: settings[t.key] ? 23 : 3,
+                  transition: "left 0.2s",
+                  boxShadow: "0 1px 3px rgba(0,0,0,0.2)",
+                }}
+              />
+            </button>
+          </div>
+        ))}
       </div>
     </div>
   );

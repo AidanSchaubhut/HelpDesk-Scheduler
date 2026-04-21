@@ -84,12 +84,14 @@ func ResolveTimeclockRequest(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	if cwid, shiftDate, err := database.GetTimeclockCWID(id); err == nil {
-		if student, err := database.GetStudent(cwid); err == nil && student.User_ID != "" {
-			go slack.Notify(slack.Message{
-				Channel:     student.User_ID + "@latech.edu",
-				MessageText: fmt.Sprintf("Your timeclock correction request for *%s* has been resolved.", shiftDate),
-			})
+	if settings, err := database.GetNotificationSettings(); err == nil && settings.TimeclockNotify {
+		if cwid, shiftDate, err := database.GetTimeclockCWID(id); err == nil {
+			if student, err := database.GetStudent(cwid); err == nil && student.User_ID != "" {
+				go slack.Notify(slack.Message{
+					Channel:     student.User_ID + "@latech.edu",
+					MessageText: fmt.Sprintf("Your timeclock correction request for *%s* has been resolved.", shiftDate),
+				})
+			}
 		}
 	}
 

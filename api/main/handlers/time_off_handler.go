@@ -189,16 +189,18 @@ func UpdateTimeOffStatus(w http.ResponseWriter, r *http.Request) {
 	}
 
 	if req.Status == "excused" || req.Status == "unexcused" {
-		if cwid, day, date, err := database.GetTimeOffCWID(id); err == nil {
-			if student, err := database.GetStudent(cwid); err == nil && student.User_ID != "" {
-				detail := day
-				if date != "" {
-					detail = fmt.Sprintf("%s (%s)", day, date)
+		if settings, err := database.GetNotificationSettings(); err == nil && settings.TimeOffNotify {
+			if cwid, day, date, err := database.GetTimeOffCWID(id); err == nil {
+				if student, err := database.GetStudent(cwid); err == nil && student.User_ID != "" {
+					detail := day
+					if date != "" {
+						detail = fmt.Sprintf("%s (%s)", day, date)
+					}
+					go slack.Notify(slack.Message{
+						Channel:     student.User_ID + "@latech.edu",
+						MessageText: fmt.Sprintf("Your time-off request for *%s* has been marked *%s*.", detail, req.Status),
+					})
 				}
-				go slack.Notify(slack.Message{
-					Channel:     student.User_ID + "@latech.edu",
-					MessageText: fmt.Sprintf("Your time-off request for *%s* has been marked *%s*.", detail, req.Status),
-				})
 			}
 		}
 	}
