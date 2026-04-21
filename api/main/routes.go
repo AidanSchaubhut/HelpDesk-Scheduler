@@ -89,6 +89,7 @@ func RegisterRoutes() chi.Router {
 			r.Delete("/schedule/clear", handlers.ClearAllSchedule)
 			r.Get("/schedule/slot-counts", handlers.GetAllStudentSlotCounts)
 			r.Get("/schedule/export-csv", handlers.ExportScheduleCSV)
+			r.Post("/schedule/timeclock-report", handlers.GenerateTimeclockReport)
 
 			// Time-off admin routes - registered individually to avoid
 			// shadowing the authenticated /time-off subrouter above

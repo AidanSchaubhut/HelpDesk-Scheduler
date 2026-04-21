@@ -41,7 +41,7 @@ import {
   setStudentPin,
   updateStudent,
   getStudentSlotCounts,
-  exportScheduleCSV,
+  generateTimeclockReport,
 } from "../api/client";
 
 export default function AdminPage({ showToast }) {
@@ -65,6 +65,7 @@ export default function AdminPage({ showToast }) {
   const [slotCounts, setSlotCounts] = useState({});
   const [showClearConfirm, setShowClearConfirm] = useState(false);
   const [clearing, setClearing] = useState(false);
+  const timeclockFileRef = useRef(null);
 
   // Fetch all data
   const fetchAll = useCallback(async () => {
@@ -183,15 +184,34 @@ export default function AdminPage({ showToast }) {
           ))}
         </div>
         <div className="admin-actions" style={{ display: "flex", gap: 8, alignItems: "center" }}>
-          <button
-            onClick={async () => {
+          <input
+            type="file"
+            accept=".csv"
+            ref={timeclockFileRef}
+            style={{ display: "none" }}
+            onChange={async (e) => {
+              const file = e.target.files[0];
+              if (!file) return;
               try {
-                await exportScheduleCSV();
-                showToast("Schedule CSV downloaded", "success");
-              } catch {
-                showToast("Failed to export schedule", "error");
+                const { blob, weekLabel } = await generateTimeclockReport(file);
+                const url = URL.createObjectURL(blob);
+                window.open(url, "_blank");
+                const filename = weekLabel
+                  ? `timeclock_report_${weekLabel.replace(/\//g, "-").replace(/ /g, "")}.html`
+                  : "timeclock_report.html";
+                const a = document.createElement("a");
+                a.href = url;
+                a.download = filename;
+                a.click();
+                showToast("Timeclock report generated", "success");
+              } catch (err) {
+                showToast(err.message || "Failed to generate report", "error");
               }
+              e.target.value = "";
             }}
+          />
+          <button
+            onClick={() => timeclockFileRef.current?.click()}
             style={{
               display: "flex", alignItems: "center", gap: 6,
               padding: "8px 16px", borderRadius: 8, border: "1px solid #CBD5E1",
@@ -199,7 +219,7 @@ export default function AdminPage({ showToast }) {
               fontWeight: 500, cursor: "pointer",
             }}
           >
-            <Icons.Download /> Export CSV
+            <Icons.Upload /> Timeclock Report
           </button>
           <button
             onClick={() => setShowClearConfirm(true)}

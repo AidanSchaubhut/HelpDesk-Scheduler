@@ -99,6 +99,24 @@ export async function exportScheduleCSV() {
   URL.revokeObjectURL(url);
 }
 
+export async function generateTimeclockReport(file) {
+  const token = localStorage.getItem("token");
+  const formData = new FormData();
+  formData.append("file", file);
+  const res = await fetch(`${API_BASE}/schedule/timeclock-report`, {
+    method: "POST",
+    headers: { Authorization: `Bearer ${token}` },
+    body: formData,
+  });
+  if (!res.ok) {
+    const text = await res.text();
+    throw new Error(text || "Failed to generate report");
+  }
+  const blob = await res.blob();
+  const weekLabel = res.headers.get("X-Week-Label") || "";
+  return { blob, weekLabel };
+}
+
 // Time Off
 export const createTimeOffRequest = (params) => request("POST", "/time-off", params);
 export const getTimeOffByStudent = (cwid) => request("GET", `/time-off/student/${cwid}`);
