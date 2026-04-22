@@ -16,6 +16,19 @@ import (
 
 const toleranceMinutes = 15
 
+// parseFlexDate parses dates in M/D/YYYY or M/D/YY format.
+func parseFlexDate(dateStr string) (time.Time, error) {
+	t, err := time.Parse("1/2/2006", dateStr)
+	if err == nil {
+		return t, nil
+	}
+	t, err = time.Parse("1/2/06", dateStr)
+	if err == nil {
+		return t, nil
+	}
+	return time.Time{}, fmt.Errorf("cannot parse date: %s", dateStr)
+}
+
 // timeclockEntry represents a single parsed timeclock row.
 type timeclockEntry struct {
 	Name     string
@@ -177,7 +190,7 @@ func parseTimeclockCSV(raw []byte) ([]timeclockEntry, error) {
 		}
 		seen[key] = true
 
-		dateObj, err := time.Parse("1/2/2006", dateStr)
+		dateObj, err := parseFlexDate(dateStr)
 		if err != nil {
 			continue
 		}
@@ -477,7 +490,7 @@ func abs(x int) int {
 
 func parseDateForSort(dateStr, day string) time.Time {
 	if dateStr != "" {
-		t, err := time.Parse("1/2/2006", dateStr)
+		t, err := parseFlexDate(dateStr)
 		if err == nil {
 			return t
 		}
@@ -504,7 +517,7 @@ func earliestTime(r comparisonResult) int {
 func deriveWeekLabel(entries []timeclockEntry) string {
 	var dates []time.Time
 	for _, e := range entries {
-		t, err := time.Parse("1/2/2006", e.Date)
+		t, err := parseFlexDate(e.Date)
 		if err == nil {
 			dates = append(dates, t)
 		}
