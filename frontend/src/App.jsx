@@ -10,6 +10,7 @@ import TodayPage from "./pages/TodayPage";
 import TimeOffPage from "./pages/TimeOffPage";
 import TimeclockPage from "./pages/TimeclockPage";
 import AdminPage from "./pages/AdminPage";
+import WeekPage from "./pages/WeekPage";
 import { getCurrentDay } from "./styles/theme";
 
 function AppShell() {
@@ -40,6 +41,9 @@ function AppShell() {
         )}
         {view === "schedule" && (
           <SchedulePage day={selectedDay} />
+        )}
+        {view === "week" && (
+          <WeekPage />
         )}
         {view === "today" && (
           <TodayPage />

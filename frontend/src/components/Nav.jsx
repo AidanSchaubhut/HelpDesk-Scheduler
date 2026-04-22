@@ -68,6 +68,7 @@ export default function Nav({ view, onViewChange }) {
   const tabs = [
     { id: "signup", label: "Sign Up", icon: <Icons.Calendar /> },
     { id: "schedule", label: "Schedule", icon: <Icons.Grid /> },
+    { id: "week", label: "Week", icon: <Icons.Calendar /> },
     { id: "today", label: "Today", icon: <Icons.Clock /> },
     { id: "timeoff", label: "Time Off", icon: <Icons.Calendar /> },
     { id: "timeclock", label: "Time Errors", icon: <Icons.Clock /> },
