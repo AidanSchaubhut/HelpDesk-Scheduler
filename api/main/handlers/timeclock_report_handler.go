@@ -16,15 +16,13 @@ import (
 
 const toleranceMinutes = 15
 
-// parseFlexDate parses dates in M/D/YYYY or M/D/YY format.
+// parseFlexDate parses dates in YYYY-MM-DD, M/D/YYYY, or M/D/YY format.
 func parseFlexDate(dateStr string) (time.Time, error) {
-	t, err := time.Parse("1/2/2006", dateStr)
-	if err == nil {
-		return t, nil
-	}
-	t, err = time.Parse("1/2/06", dateStr)
-	if err == nil {
-		return t, nil
+	for _, layout := range []string{"2006-01-02", "1/2/2006", "1/2/06"} {
+		t, err := time.Parse(layout, dateStr)
+		if err == nil {
+			return t, nil
+		}
 	}
 	return time.Time{}, fmt.Errorf("cannot parse date: %s", dateStr)
 }
