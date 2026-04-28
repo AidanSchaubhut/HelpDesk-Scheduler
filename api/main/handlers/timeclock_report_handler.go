@@ -39,6 +39,7 @@ type timeclockEntry struct {
 // scheduleBlock represents a merged contiguous schedule block.
 type scheduleBlock struct {
 	Name           string
+	CWID           string
 	Day            string
 	ScheduledStart string // HH:mm
 	ScheduledEnd   string // HH:mm
@@ -56,7 +57,9 @@ type comparisonResult struct {
 	StartDiff      int
 	EndDiff        int
 	Status         string
-	HasDiffs       bool // whether StartDiff/EndDiff are meaningful
+	HasDiffs       bool   // whether StartDiff/EndDiff are meaningful
+	IsTimeOff      bool   // whether this block is covered by a time-off request
+	TimeOffStatus  string // excused, unexcused, or pending
 }
 
 // GenerateTimeclockReport handles POST /api/schedule/timeclock-report
@@ -95,8 +98,11 @@ func GenerateTimeclockReport(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	// Build day-to-date mapping and fetch time-off requests
+	timeOffLookup := buildTimeOffLookup(timeclockEntries)
+
 	// Run comparison
-	results := compareTimeclock(timeclockEntries, scheduleBlocks)
+	results := compareTimeclock(timeclockEntries, scheduleBlocks, timeOffLookup)
 
 	// Derive week label from timeclock dates
 	weekLabel := deriveWeekLabel(timeclockEntries)
@@ -217,10 +223,12 @@ func getScheduleBlocks() ([]scheduleBlock, error) {
 		day  string
 	}
 	grouped := make(map[groupKey][]int)
+	nameToCWID := make(map[string]string)
 	for _, e := range entries {
 		k := groupKey{name: e.StudentName, day: e.Day}
 		mins := slotStartMinutes(e.Slot)
 		grouped[k] = append(grouped[k], mins)
+		nameToCWID[e.StudentName] = e.CWID
 	}
 
 	var blocks []scheduleBlock
@@ -234,6 +242,8 @@ func getScheduleBlocks() ([]scheduleBlock, error) {
 			}
 		}
 
+		cwid := nameToCWID[k.name]
+
 		blockStart := deduped[0]
 		blockEnd := deduped[0] + 30
 		for i := 1; i < len(deduped); i++ {
@@ -242,6 +252,7 @@ func getScheduleBlocks() ([]scheduleBlock, error) {
 			} else {
 				blocks = append(blocks, scheduleBlock{
 					Name:           k.name,
+					CWID:           cwid,
 					Day:            k.day,
 					ScheduledStart: minutesTo24h(blockStart),
 					ScheduledEnd:   minutesTo24h(blockEnd),
@@ -252,6 +263,7 @@ func getScheduleBlocks() ([]scheduleBlock, error) {
 		}
 		blocks = append(blocks, scheduleBlock{
 			Name:           k.name,
+			CWID:           cwid,
 			Day:            k.day,
 			ScheduledStart: minutesTo24h(blockStart),
 			ScheduledEnd:   minutesTo24h(blockEnd),
@@ -274,8 +286,172 @@ func timeToMinutes(t string) int {
 	return h*60 + m
 }
 
+// timeOffKey identifies a specific student+date for time-off lookup.
+type timeOffKey struct {
+	cwid string
+	date string // YYYY-MM-DD
+}
+
+// timeOffInfo holds the slot minutes covered and the status of the time-off request.
+type timeOffInfo struct {
+	slotMinutes []int  // individual 30-min slot start times; empty = full day
+	fullDay     bool
+	status      string // excused, unexcused, pending
+}
+
+// buildTimeOffLookup extracts dates from timeclock entries, queries time-off
+// requests for those dates, and returns a lookup map keyed by (cwid, date).
+func buildTimeOffLookup(timeclock []timeclockEntry) map[timeOffKey][]timeOffInfo {
+	// Collect unique dates from timeclock entries, converting to YYYY-MM-DD
+	dateSet := make(map[string]bool)
+	for _, e := range timeclock {
+		t, err := parseFlexDate(e.Date)
+		if err == nil {
+			dateSet[t.Format("2006-01-02")] = true
+		}
+	}
+
+	dates := make([]string, 0, len(dateSet))
+	for d := range dateSet {
+		dates = append(dates, d)
+	}
+
+	requests, err := database.GetTimeOffByDates(dates)
+	if err != nil || len(requests) == 0 {
+		return nil
+	}
+
+	lookup := make(map[timeOffKey][]timeOffInfo)
+	for _, req := range requests {
+		// Convert effective_date to YYYY-MM-DD for consistent keying
+		t, err := parseFlexDate(req.EffectiveDate)
+		if err != nil {
+			continue
+		}
+		key := timeOffKey{cwid: req.CWID, date: t.Format("2006-01-02")}
+
+		info := timeOffInfo{status: req.Status}
+		if req.Slot == "" {
+			info.fullDay = true
+		} else {
+			info.slotMinutes = []int{slotStartMinutes(req.Slot)}
+		}
+
+		lookup[key] = append(lookup[key], info)
+	}
+
+	return lookup
+}
+
+// timeOffSplit holds the result of splitting a schedule block by time-off coverage.
+type timeOffSplit struct {
+	// normalBlocks are portions of the schedule not covered by time-off.
+	normalBlocks []scheduleBlock
+	// timeOffBlocks are portions covered by time-off, with their status.
+	timeOffBlocks []struct {
+		block  scheduleBlock
+		status string
+	}
+}
+
+// splitBlockByTimeOff splits a schedule block into normal and time-off sub-blocks.
+// Returns nil if no time-off applies to this block.
+func splitBlockByTimeOff(s scheduleBlock, date string, lookup map[timeOffKey][]timeOffInfo) *timeOffSplit {
+	if lookup == nil || s.CWID == "" || date == "" {
+		return nil
+	}
+
+	key := timeOffKey{cwid: s.CWID, date: date}
+	infos, ok := lookup[key]
+	if !ok {
+		return nil
+	}
+
+	blockStart := timeToMinutes(s.ScheduledStart)
+	blockEnd := timeToMinutes(s.ScheduledEnd)
+
+	// Check for full-day time off
+	for _, info := range infos {
+		if info.fullDay {
+			result := &timeOffSplit{}
+			result.timeOffBlocks = append(result.timeOffBlocks, struct {
+				block  scheduleBlock
+				status string
+			}{block: s, status: info.status})
+			return result
+		}
+	}
+
+	// Collect all time-off slot minutes into a set
+	timeOffSlots := make(map[int]string)
+	for _, info := range infos {
+		for _, m := range info.slotMinutes {
+			timeOffSlots[m] = info.status
+		}
+	}
+
+	// Check if any slots in this block are covered
+	hasCoverage := false
+	for m := blockStart; m < blockEnd; m += 30 {
+		if _, ok := timeOffSlots[m]; ok {
+			hasCoverage = true
+			break
+		}
+	}
+	if !hasCoverage {
+		return nil
+	}
+
+	// Walk through the block in 30-min increments and split into runs
+	result := &timeOffSplit{}
+	type run struct {
+		start    int
+		end      int
+		isOff    bool
+		status   string
+	}
+
+	var runs []run
+	var current *run
+
+	for m := blockStart; m < blockEnd; m += 30 {
+		status, isOff := timeOffSlots[m]
+		if current == nil || current.isOff != isOff {
+			if current != nil {
+				runs = append(runs, *current)
+			}
+			current = &run{start: m, end: m + 30, isOff: isOff, status: status}
+		} else {
+			current.end = m + 30
+		}
+	}
+	if current != nil {
+		runs = append(runs, *current)
+	}
+
+	for _, r := range runs {
+		sub := scheduleBlock{
+			Name:           s.Name,
+			CWID:           s.CWID,
+			Day:            s.Day,
+			ScheduledStart: minutesTo24h(r.start),
+			ScheduledEnd:   minutesTo24h(r.end),
+		}
+		if r.isOff {
+			result.timeOffBlocks = append(result.timeOffBlocks, struct {
+				block  scheduleBlock
+				status string
+			}{block: sub, status: r.status})
+		} else {
+			result.normalBlocks = append(result.normalBlocks, sub)
+		}
+	}
+
+	return result
+}
+
 // compareTimeclock runs the comparison between timeclock and schedule data.
-func compareTimeclock(timeclock []timeclockEntry, schedule []scheduleBlock) []comparisonResult {
+func compareTimeclock(timeclock []timeclockEntry, schedule []scheduleBlock, timeOffLookup map[timeOffKey][]timeOffInfo) []comparisonResult {
 	type groupKey struct {
 		name string
 		day  string
@@ -291,6 +467,20 @@ func compareTimeclock(timeclock []timeclockEntry, schedule []scheduleBlock) []co
 	for _, b := range schedule {
 		k := groupKey{strings.ToUpper(b.Name), b.Day}
 		schedByKey[k] = append(schedByKey[k], b)
+	}
+
+	// Build day-of-week to date mapping from timeclock entries so we can
+	// look up time-off even for students with no clock data.
+	dayToDate := make(map[string]string) // day name -> YYYY-MM-DD
+	dayToRawDate := make(map[string]string) // day name -> original date string
+	for _, e := range timeclock {
+		if _, exists := dayToDate[e.Day]; !exists {
+			t, err := parseFlexDate(e.Date)
+			if err == nil {
+				dayToDate[e.Day] = t.Format("2006-01-02")
+				dayToRawDate[e.Day] = e.Date
+			}
+		}
 	}
 
 	allKeys := make(map[groupKey]bool)
@@ -323,21 +513,93 @@ func compareTimeclock(timeclock []timeclockEntry, schedule []scheduleBlock) []co
 		}
 
 		if len(scheduled) > 0 && len(actual) == 0 {
-			// Scheduled but never clocked in
+			// Scheduled but never clocked in — check for time-off
+			dateForLookup := dayToDate[key.day]
+			rawDate := dayToRawDate[key.day]
 			for _, s := range scheduled {
-				results = append(results, comparisonResult{
-					Name:           key.name,
-					Day:            key.day,
-					ScheduledStart: s.ScheduledStart,
-					ScheduledEnd:   s.ScheduledEnd,
-					Status:         "NO SHOW - Scheduled but did not clock in",
-				})
+				split := splitBlockByTimeOff(s, dateForLookup, timeOffLookup)
+				if split == nil {
+					// No time-off at all — entire block is NO SHOW
+					results = append(results, comparisonResult{
+						Name:           key.name,
+						Day:            key.day,
+						ScheduledStart: s.ScheduledStart,
+						ScheduledEnd:   s.ScheduledEnd,
+						Status:         "NO SHOW - Scheduled but did not clock in",
+					})
+				} else {
+					// Time-off sub-blocks
+					for _, to := range split.timeOffBlocks {
+						results = append(results, comparisonResult{
+							Name:           key.name,
+							Day:            key.day,
+							Date:           rawDate,
+							ScheduledStart: to.block.ScheduledStart,
+							ScheduledEnd:   to.block.ScheduledEnd,
+							Status:         "TIME OFF - " + capitalizeFirst(to.status),
+							IsTimeOff:      true,
+							TimeOffStatus:  to.status,
+						})
+					}
+					// Normal sub-blocks with no time-off are still NO SHOW
+					for _, nb := range split.normalBlocks {
+						results = append(results, comparisonResult{
+							Name:           key.name,
+							Day:            key.day,
+							Date:           rawDate,
+							ScheduledStart: nb.ScheduledStart,
+							ScheduledEnd:   nb.ScheduledEnd,
+							Status:         "NO SHOW - Scheduled but did not clock in",
+						})
+					}
+				}
 			}
 			continue
 		}
 
+		// Pre-split scheduled blocks by time-off so partial time-off is
+		// separated before matching against clock data.
+		dateForSplit := dayToDate[key.day]
+		// Also try to get date from actual entries for more accuracy
+		if len(actual) > 0 {
+			if t, err := parseFlexDate(actual[0].Date); err == nil {
+				dateForSplit = t.Format("2006-01-02")
+			}
+		}
+
+		var effectiveSched []scheduleBlock
+		var preTimeOffResults []comparisonResult
+		rawDateForSplit := ""
+		if len(actual) > 0 {
+			rawDateForSplit = actual[0].Date
+		} else {
+			rawDateForSplit = dayToRawDate[key.day]
+		}
+
+		for _, s := range scheduled {
+			split := splitBlockByTimeOff(s, dateForSplit, timeOffLookup)
+			if split == nil {
+				effectiveSched = append(effectiveSched, s)
+			} else {
+				effectiveSched = append(effectiveSched, split.normalBlocks...)
+				for _, to := range split.timeOffBlocks {
+					preTimeOffResults = append(preTimeOffResults, comparisonResult{
+						Name:           key.name,
+						Day:            key.day,
+						Date:           rawDateForSplit,
+						ScheduledStart: to.block.ScheduledStart,
+						ScheduledEnd:   to.block.ScheduledEnd,
+						Status:         "TIME OFF - " + capitalizeFirst(to.status),
+						IsTimeOff:      true,
+						TimeOffStatus:  to.status,
+					})
+				}
+			}
+		}
+		results = append(results, preTimeOffResults...)
+
 		// Both exist — match blocks by closest start time
-		matched, unmatchedSched, unmatchedActual := matchBlocks(scheduled, actual)
+		matched, unmatchedSched, unmatchedActual := matchBlocks(effectiveSched, actual)
 
 		for _, pair := range matched {
 			s := pair.sched
@@ -387,10 +649,23 @@ func compareTimeclock(timeclock []timeclockEntry, schedule []scheduleBlock) []co
 			})
 		}
 
+		// Derive the date for unmatched schedule blocks from actual entries
+		// so they group on the same row in the report instead of splitting
+		// into a separate "(no clock data)" row.
+		unmatchedDate := ""
+		if len(matched) > 0 {
+			unmatchedDate = matched[0].actual.Date
+		} else if len(actual) > 0 {
+			unmatchedDate = actual[0].Date
+		}
+
+		// Unmatched schedule blocks are already pre-split (time-off portions
+		// were extracted above), so these are purely non-time-off blocks.
 		for _, s := range unmatchedSched {
 			results = append(results, comparisonResult{
 				Name:           key.name,
 				Day:            key.day,
+				Date:           unmatchedDate,
 				ScheduledStart: s.ScheduledStart,
 				ScheduledEnd:   s.ScheduledEnd,
 				Status:         "NO SHOW - Scheduled but did not clock in",
@@ -477,6 +752,13 @@ func matchBlocks(scheduled []scheduleBlock, actual []timeclockEntry) ([]matchedP
 	}
 
 	return matched, unmatchedSched, unmatchedActual
+}
+
+func capitalizeFirst(s string) string {
+	if s == "" {
+		return s
+	}
+	return strings.ToUpper(s[:1]) + s[1:]
 }
 
 func abs(x int) int {
@@ -634,8 +916,16 @@ func generateHTMLReport(results []comparisonResult, weekLabel string) string {
 				if entry.ScheduledStart != "" && entry.ScheduledEnd != "" {
 					sStart := timeToMinutes(entry.ScheduledStart)
 					sEnd := timeToMinutes(entry.ScheduledEnd)
-					bars.WriteString(bar(sStart, sEnd, "scheduled"))
-					tooltips = append(tooltips, fmt.Sprintf("Scheduled: %s-%s", entry.ScheduledStart, entry.ScheduledEnd))
+					schedCSS := "scheduled"
+					if entry.IsTimeOff {
+						schedCSS = "scheduled-timeoff"
+					}
+					bars.WriteString(bar(sStart, sEnd, schedCSS))
+					label := fmt.Sprintf("Scheduled: %s-%s", entry.ScheduledStart, entry.ScheduledEnd)
+					if entry.IsTimeOff {
+						label += " (Time Off - " + entry.TimeOffStatus + ")"
+					}
+					tooltips = append(tooltips, label)
 				}
 
 				// Actual bar
@@ -665,6 +955,8 @@ func generateHTMLReport(results []comparisonResult, weekLabel string) string {
 			allOK := true
 			hasNoShow := false
 			hasUnsched := false
+			hasTimeOff := false
+			allTimeOff := true
 			for _, e := range entries {
 				if e.Status != "OK" {
 					allOK = false
@@ -675,14 +967,25 @@ func generateHTMLReport(results []comparisonResult, weekLabel string) string {
 				if strings.Contains(e.Status, "UNSCHEDULED") {
 					hasUnsched = true
 				}
+				if e.IsTimeOff {
+					hasTimeOff = true
+				} else {
+					allTimeOff = false
+				}
 			}
 			if !allOK {
-				if hasNoShow {
+				if allTimeOff && hasTimeOff {
+					badgeClass = "badge-timeoff"
+					badgeText = "TIME OFF"
+				} else if hasNoShow {
 					badgeClass = "badge-noshow"
 					badgeText = "NO SHOW"
 				} else if hasUnsched {
 					badgeClass = "badge-unscheduled"
 					badgeText = "UNSCHEDULED"
+				} else if hasTimeOff {
+					badgeClass = "badge-timeoff"
+					badgeText = "TIME OFF"
 				} else {
 					badgeClass = "badge-discrepancy"
 					badgeText = "DISCREPANCY"
@@ -721,10 +1024,13 @@ func generateHTMLReport(results []comparisonResult, weekLabel string) string {
 	discrepancies := 0
 	noShows := 0
 	unscheduled := 0
+	timeOffs := 0
 	for _, r := range results {
 		switch {
 		case r.Status == "OK":
 			ok++
+		case r.IsTimeOff:
+			timeOffs++
 		case strings.Contains(r.Status, "NO SHOW"):
 			noShows++
 		case strings.Contains(r.Status, "UNSCHEDULED"):
@@ -757,6 +1063,7 @@ func generateHTMLReport(results []comparisonResult, weekLabel string) string {
     .stat-noshow { background: #fce4ec; color: #c62828; }
     .stat-unsched { background: #e3f2fd; color: #1565c0; }
     .stat-total { background: #f3e5f5; color: #6a1b9a; }
+    .stat-timeoff { background: #f5f5f5; color: #757575; }
     .legend { display: flex; gap: 16px; margin-top: 14px; flex-wrap: wrap; }
     .legend-item { display: flex; align-items: center; gap: 6px; font-size: 0.8em; color: #666; }
     .legend-swatch { width: 24px; height: 10px; border-radius: 3px; }
@@ -773,9 +1080,11 @@ func generateHTMLReport(results []comparisonResult, weekLabel string) string {
     .badge-discrepancy { background: #fff3e0; color: #e65100; }
     .badge-noshow { background: #fce4ec; color: #c62828; }
     .badge-unscheduled { background: #e3f2fd; color: #1565c0; }
+    .badge-timeoff { background: #f5f5f5; color: #757575; }
     .timeline { position: relative; height: 28px; background: #fafafa; border: 1px solid #eee; border-radius: 4px; overflow: hidden; }
     .bar { position: absolute; top: 0; height: 100%%; border-radius: 3px; opacity: 0.7; }
     .scheduled { background: #90caf9; top: 0; height: 50%%; z-index: 1; }
+    .scheduled-timeoff { background: #bdbdbd; top: 0; height: 100%%; z-index: 1; opacity: 0.45; }
     .actual-ok { background: #66bb6a; top: 50%%; height: 50%%; z-index: 2; }
     .actual-discrepancy { background: #ffa726; top: 50%%; height: 50%%; z-index: 2; }
     .actual-unscheduled { background: #7e57c2; top: 50%%; height: 50%%; z-index: 2; }
@@ -797,6 +1106,7 @@ func generateHTMLReport(results []comparisonResult, weekLabel string) string {
         <div class="stat stat-disc">Discrepancies: %d</div>
         <div class="stat stat-noshow">No Shows: %d</div>
         <div class="stat stat-unsched">Unscheduled: %d</div>
+        <div class="stat stat-timeoff">Time Off: %d</div>
     </div>
     <div class="legend">
         <div class="legend-item"><div class="legend-swatch" style="background:#90caf9"></div> Scheduled</div>
@@ -804,11 +1114,12 @@ func generateHTMLReport(results []comparisonResult, weekLabel string) string {
         <div class="legend-item"><div class="legend-swatch" style="background:#ffa726"></div> Actual (Discrepancy)</div>
         <div class="legend-item"><div class="legend-swatch" style="background:#7e57c2"></div> Actual (Unscheduled)</div>
         <div class="legend-item"><div class="legend-swatch" style="background:#fce4ec"></div> No Show</div>
+        <div class="legend-item"><div class="legend-swatch" style="background:#bdbdbd;opacity:0.45"></div> Time Off</div>
     </div>
 </div>
 <div class="container">
     %s
 </div>
 </body>
-</html>`, titleSuffix, titleSuffix, total, ok, discrepancies, noShows, unscheduled, rowsHTML.String())
+</html>`, titleSuffix, titleSuffix, total, ok, discrepancies, noShows, unscheduled, timeOffs, rowsHTML.String())
 }

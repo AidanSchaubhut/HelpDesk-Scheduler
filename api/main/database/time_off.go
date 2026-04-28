@@ -3,6 +3,7 @@ package database
 import (
 	"database/sql"
 	"fmt"
+	"strings"
 
 	"helpdesk-scheduler/models"
 )
@@ -47,6 +48,43 @@ func GetTimeOffByDay(day string) ([]models.TimeOffRequest, error) {
 		WHERE day = ? AND (effective_date IS NULL OR effective_date = date('now'))
 		ORDER BY slot
 	`, day)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	var requests []models.TimeOffRequest
+	for rows.Next() {
+		var r models.TimeOffRequest
+		if err := rows.Scan(&r.ID, &r.CWID, &r.Day, &r.Slot, &r.EffectiveDate, &r.Reason, &r.Status, &r.ReviewedBy, &r.ReviewedAt, &r.CreatedAt); err != nil {
+			return nil, err
+		}
+		requests = append(requests, r)
+	}
+	return requests, rows.Err()
+}
+
+// GetTimeOffByDates returns time-off requests for specific effective dates.
+func GetTimeOffByDates(dates []string) ([]models.TimeOffRequest, error) {
+	if len(dates) == 0 {
+		return nil, nil
+	}
+
+	placeholders := make([]string, len(dates))
+	args := make([]interface{}, len(dates))
+	for i, d := range dates {
+		placeholders[i] = "?"
+		args[i] = d
+	}
+
+	query := fmt.Sprintf(`
+		SELECT id, cwid, day, COALESCE(slot, ''), COALESCE(effective_date, ''), COALESCE(reason, ''), status, reviewed_by, reviewed_at, created_at
+		FROM time_off_requests
+		WHERE effective_date IN (%s)
+		ORDER BY cwid, day, slot
+	`, strings.Join(placeholders, ","))
+
+	rows, err := DB.Query(query, args...)
 	if err != nil {
 		return nil, err
 	}
