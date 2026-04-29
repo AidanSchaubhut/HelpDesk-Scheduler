@@ -1095,6 +1095,20 @@ func generateHTMLReport(results []comparisonResult, weekLabel string) string {
         .row { grid-template-columns: 140px 1fr; }
         .row-status { display: none; }
     }
+    @media print {
+        @page { size: landscape; margin: 0.4in; }
+        * { -webkit-print-color-adjust: exact !important; print-color-adjust: exact !important; color-adjust: exact !important; }
+        body { background: #fff; padding: 0; font-size: 9pt; }
+        .report-header { box-shadow: none; padding: 10px 0; margin-bottom: 10px; border-bottom: 2px solid #333; }
+        .report-header h1 { font-size: 1.2em; }
+        .container { box-shadow: none; padding: 0; }
+        .person-header { break-after: avoid; }
+        .row { break-inside: avoid; padding: 4px 0; }
+        .row:hover { background: transparent; }
+        .stat { border: 1px solid #ccc; }
+        .timeline { border: 1px solid #ccc; }
+        .bar { opacity: 0.85 !important; }
+    }
 </style>
 </head>
 <body>
