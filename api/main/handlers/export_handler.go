@@ -10,13 +10,21 @@ import (
 	"helpdesk-scheduler/database"
 )
 
-// slotStartMinutes parses a slot like "8:00 - 8:30" into minutes from midnight (24h).
-// Hours 1-7 are treated as PM (13:00-19:00) since the schedule runs 8 AM - 5 PM.
+// slotStartMinutes parses a slot into minutes from midnight (24h).
+// Mirrors slotToMinutes in frontend/src/styles/theme.js — accepts two formats so
+// stored legacy rows ("8:00 - 8:30") and new extended-hours rows ("07:00 - 07:30",
+// "20:00 - 20:30") both parse correctly.
+//   24h zero-padded ("07:00") or hour >= 13 → parse as-is.
+//   Legacy 12h ("8:00", "1:00") → hours 1-7 are PM (+12).
 func slotStartMinutes(slot string) int {
 	start := strings.TrimSpace(strings.Split(slot, " - ")[0])
 	parts := strings.Split(start, ":")
-	h, _ := strconv.Atoi(parts[0])
+	hStr := parts[0]
+	h, _ := strconv.Atoi(hStr)
 	m, _ := strconv.Atoi(parts[1])
+	if (len(hStr) == 2 && hStr[0] == '0') || h >= 13 {
+		return h*60 + m
+	}
 	if h >= 1 && h <= 7 {
 		h += 12
 	}

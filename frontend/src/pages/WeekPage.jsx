@@ -1,6 +1,6 @@
 import { useState, useEffect, useMemo, useRef } from "react";
 import { Icons } from "../components/Icons";
-import { DAYS, teamColors, buildTeamHoursMap, getVisibleSlots, isSlotActiveForTeam } from "../styles/theme";
+import { DAYS, teamColors, buildTeamHoursMap, getVisibleSlots, isSlotActiveForTeam, slotToMinutes } from "../styles/theme";
 import { getAllTeams, getScheduleByDay, getAllStudentBadges, getAllTeamHours } from "../api/client";
 
 export default function WeekPage() {
@@ -105,10 +105,7 @@ export default function WeekPage() {
     const slotSet = new Set();
     Object.values(visibleSlotsByDay).forEach((slots) => slots.forEach((s) => slotSet.add(s)));
     // Sort by time
-    return Array.from(slotSet).sort((a, b) => {
-      const toMin = (s) => { const p = s.split(" - ")[0].split(":"); let h = +p[0]; if (h < 8) h += 12; return h * 60 + +p[1]; };
-      return toMin(a) - toMin(b);
-    });
+    return Array.from(slotSet).sort((a, b) => slotToMinutes(a) - slotToMinutes(b));
   }, [visibleSlotsByDay]);
 
   const getSlotStudents = (day, slot, teamId) => {

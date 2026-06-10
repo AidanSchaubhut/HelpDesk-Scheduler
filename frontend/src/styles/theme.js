@@ -22,30 +22,47 @@ export function getCurrentDay() {
   return DAYS[dayIndex - 1];
 }
 
-// Parse a slot string like "8:00 - 8:30" into 24h start minutes from midnight
-// e.g. "8:00 - 8:30" → 480, "1:00 - 1:30" → 780 (1 PM)
+// Parse a slot string into 24h start minutes from midnight.
+// Two formats are accepted so we don't have to migrate stored schedule rows:
+//   Legacy 12h ("8:00", "1:00", "12:30") — used for slots starting 8 AM - 7:30 PM.
+//     Rule: hours 1-7 → PM (+12). Matches the original 8 AM - 5 PM schedule.
+//   24h zero-padded ("07:00", "20:00") — used for slots before 8 AM or at/after 8 PM,
+//     where the legacy rule would be ambiguous.
 export function slotToMinutes(slot) {
-  const startStr = slot.split(" - ")[0]; // e.g. "8:00" or "1:00"
-  let [h, m] = startStr.split(":").map(Number);
-  // Slots run 8 AM onwards. Hours 1-7 are PM (13-19).
-  if (h < 8) h += 12;
-  return h * 60 + m;
+  const startStr = slot.split(" - ")[0];
+  const [hStr, mStr] = startStr.split(":");
+  const h = Number(hStr);
+  const m = Number(mStr);
+  // 24h format: zero-padded ("07") or hours 13-23.
+  if ((hStr.length === 2 && hStr[0] === "0") || h >= 13) {
+    return h * 60 + m;
+  }
+  // Legacy 12h: hours 1-7 are PM.
+  const h24 = h >= 1 && h <= 7 ? h + 12 : h;
+  return h24 * 60 + m;
 }
 
-// Convert 24h minutes to the 12-hour slot time format (e.g. 480 → "8:00", 780 → "1:00")
-function minutesToSlotTime(minutes) {
-  let h = Math.floor(minutes / 60);
+// Convert 24h minutes from midnight to a slot time string.
+// Uses 24h zero-padded format ("07:00", "20:30") to disambiguate; otherwise 12h ("8:00", "1:00").
+function minutesToSlotTime(minutes, use24h) {
+  const h = Math.floor(minutes / 60);
   const m = minutes % 60;
-  if (h > 12) h -= 12;
-  return `${h}:${m.toString().padStart(2, "0")}`;
+  if (use24h) {
+    return `${h.toString().padStart(2, "0")}:${m.toString().padStart(2, "0")}`;
+  }
+  const h12 = h > 12 ? h - 12 : h;
+  return `${h12}:${m.toString().padStart(2, "0")}`;
 }
 
-// Generate slot strings between startMinutes and endMinutes (24h minutes from midnight)
-// e.g. generateSlots(480, 1020) generates slots from 8:00 AM to 5:00 PM
+// Generate slot strings between startMinutes and endMinutes (24h minutes from midnight).
+// Slots whose start hour falls inside 8 AM - 7:30 PM keep the legacy 12h format so they
+// match existing DB keys. Slots outside that window use 24h zero-padded format.
 export function generateSlots(startMinutes, endMinutes) {
   const slots = [];
   for (let m = startMinutes; m < endMinutes; m += 30) {
-    slots.push(`${minutesToSlotTime(m)} - ${minutesToSlotTime(m + 30)}`);
+    const startH = Math.floor(m / 60);
+    const use24h = startH < 8 || startH >= 20;
+    slots.push(`${minutesToSlotTime(m, use24h)} - ${minutesToSlotTime(m + 30, use24h)}`);
   }
   return slots;
 }
