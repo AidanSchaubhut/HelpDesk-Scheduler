@@ -9,7 +9,7 @@ import {
   getMyPoints,
 } from "../api/client";
 import { Icons } from "../components/Icons";
-import { DAYS, buildTeamHoursMap, getVisibleSlots } from "../styles/theme";
+import { DAYS, buildTeamHoursMap, getVisibleSlots, formatSlotLabel, formatSlotStart, formatSlotEnd } from "../styles/theme";
 
 const styles = {
   page: {
@@ -263,7 +263,7 @@ function RequestRow({ group, deletingId, onDelete }) {
 
   const timeLabel = group.slots.length === 0
     ? <span style={styles.fullDayBadge}>Full Day</span>
-    : <><Icons.Clock /> {group.slots[0].split(" - ")[0]} &ndash; {group.slots[group.slots.length - 1].split(" - ")[1]}</>;
+    : <><Icons.Clock /> {formatSlotStart(group.slots[0])} &ndash; {formatSlotEnd(group.slots[group.slots.length - 1])}</>;
 
   return (
     <div style={styles.requestRow}>
@@ -535,7 +535,7 @@ export default function TimeOffPage({ showToast }) {
                       : {}),
                   }}
                 >
-                  {slot}
+                  {formatSlotLabel(slot)}
                 </button>
               ))}
             </div>

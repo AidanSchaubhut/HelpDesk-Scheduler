@@ -11,7 +11,7 @@ import {
   getAllTeamHours,
 } from "../api/client";
 import { Icons } from "../components/Icons";
-import { DAYS, teamColors, buildTeamHoursMap, getVisibleSlots, isSlotActiveForTeam } from "../styles/theme";
+import { DAYS, teamColors, buildTeamHoursMap, getVisibleSlots, isSlotActiveForTeam, formatSlotLabel } from "../styles/theme";
 
 export default function SignUpPage({ day, showToast }) {
   const { user } = useAuth();
@@ -254,7 +254,7 @@ export default function SignUpPage({ day, showToast }) {
   }, [locked, myShifts, day, fetchSchedule, showToast]);
 
   const otherDays = DAYS.filter((d) => d !== day);
-  const gridCols = `130px ${teams.map(() => "1fr").join(" ")}`;
+  const gridCols = `150px ${teams.map(() => "1fr").join(" ")}`;
   const expandedGridCols = teams.map(() => "1fr").join(" ");
   const hasAssignments = assignments.length > 0;
 
@@ -326,7 +326,7 @@ export default function SignUpPage({ day, showToast }) {
                     background: colors.tag,
                   }}
                 >
-                  {s.slot} &middot; {s.team.name}
+                  {formatSlotLabel(s.slot)} &middot; {s.team.name}
                 </span>
               );
             })}
@@ -482,7 +482,7 @@ export default function SignUpPage({ day, showToast }) {
                     setExpandedSlot(isExpanded ? null : slot)
                   }
                 >
-                  <span style={styles.timeText}>{slot}</span>
+                  <span style={styles.timeText}>{formatSlotLabel(slot)}</span>
                   <span
                     style={{
                       ...styles.expandIcon,

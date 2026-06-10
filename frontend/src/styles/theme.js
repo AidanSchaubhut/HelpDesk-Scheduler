@@ -67,6 +67,33 @@ export function generateSlots(startMinutes, endMinutes) {
   return slots;
 }
 
+// Format a canonical slot string ("07:00 - 07:30" or "8:00 - 8:30") into a
+// compact, consistent 12h display label like "7:00 - 7:30" — strips the
+// 24h zero-padded format used for early-AM / late-PM extensions.
+// The canonical slot string is still used as the DB key everywhere; only
+// what the user sees is reformatted.
+export function formatSlotLabel(slot) {
+  const startMin = slotToMinutes(slot);
+  return `${minutesTo12h(startMin)} - ${minutesTo12h(startMin + 30)}`;
+}
+
+// Render just the start time of a canonical slot in 12h format (e.g. "7:00").
+export function formatSlotStart(slot) {
+  return minutesTo12h(slotToMinutes(slot));
+}
+// Render just the end time of a canonical slot in 12h format (e.g. "7:30").
+export function formatSlotEnd(slot) {
+  return minutesTo12h(slotToMinutes(slot) + 30);
+}
+
+function minutesTo12h(min) {
+  let h = Math.floor(min / 60);
+  const m = min % 60;
+  if (h === 0) h = 12;
+  else if (h > 12) h -= 12;
+  return `${h}:${m.toString().padStart(2, "0")}`;
+}
+
 // Parse "HH:MM" (24h) to minutes from midnight
 export function timeToMinutes(time) {
   const [h, m] = time.split(":").map(Number);

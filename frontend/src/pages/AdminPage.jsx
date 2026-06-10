@@ -1,6 +1,6 @@
 import { useState, useEffect, useRef, useMemo, useCallback } from "react";
 import { Icons } from "../components/Icons";
-import { teamColors, DAYS, TIME_SLOTS } from "../styles/theme";
+import { teamColors, DAYS, TIME_SLOTS, formatSlotStart, formatSlotEnd } from "../styles/theme";
 import { useAuth } from "../context/AuthContext";
 import {
   getAllStudents,
@@ -2053,7 +2053,7 @@ function TimeOffTab({ requests, absenceCounts, students, showToast, onRefresh })
                         <span style={styles.timeOffFullDay}>Full Day</span>
                       ) : (
                         <span style={styles.timeOffSlot}>
-                          {grp.slots[0].split(" - ")[0]} &ndash; {grp.slots[grp.slots.length - 1].split(" - ")[1]}
+                          {formatSlotStart(grp.slots[0])} &ndash; {formatSlotEnd(grp.slots[grp.slots.length - 1])}
                         </span>
                       )}
                     </td>

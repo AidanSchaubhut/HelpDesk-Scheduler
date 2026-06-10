@@ -1,6 +1,6 @@
 import { useState, useEffect, useMemo, useRef } from "react";
 import { Icons } from "../components/Icons";
-import { DAYS, teamColors, buildTeamHoursMap, getVisibleSlots, isSlotActiveForTeam, slotToMinutes } from "../styles/theme";
+import { DAYS, teamColors, buildTeamHoursMap, getVisibleSlots, isSlotActiveForTeam, slotToMinutes, formatSlotLabel } from "../styles/theme";
 import { getAllTeams, getScheduleByDay, getAllStudentBadges, getAllTeamHours } from "../api/client";
 
 export default function WeekPage() {
@@ -265,7 +265,7 @@ export default function WeekPage() {
           {allVisibleSlots.map((slot, si) => (
             <div key={slot} style={{ display: "contents" }}>
               <div style={{ ...styles.timeCell, background: si % 2 === 0 ? "#FAFAFA" : "#FFF" }}>
-                <span style={styles.timeLabel}>{slot}</span>
+                <span style={styles.timeLabel}>{formatSlotLabel(slot)}</span>
               </div>
               {DAYS.map((day) => (
                 <div

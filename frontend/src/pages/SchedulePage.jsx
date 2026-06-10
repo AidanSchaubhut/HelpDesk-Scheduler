@@ -1,6 +1,6 @@
 import { useState, useEffect, useMemo } from "react";
 import { Icons } from "../components/Icons";
-import { teamColors, buildTeamHoursMap, getVisibleSlots, isSlotActiveForTeam } from "../styles/theme";
+import { teamColors, buildTeamHoursMap, getVisibleSlots, isSlotActiveForTeam, formatSlotLabel } from "../styles/theme";
 import { getAllTeams, getScheduleByDay, getAllStudentBadges, getAllTeamHours } from "../api/client";
 
 export default function SchedulePage({ day }) {
@@ -70,7 +70,7 @@ export default function SchedulePage({ day }) {
     [teamHoursMap, teams, day]
   );
 
-  const gridCols = `120px${teams.map(() => " 1fr").join("")}`;
+  const gridCols = `150px${teams.map(() => " 1fr").join("")}`;
 
   if (loading) {
     return (
@@ -123,7 +123,7 @@ export default function SchedulePage({ day }) {
             }}
           >
             <div style={styles.timeCol}>
-              <span style={styles.time}>{slot}</span>
+              <span style={styles.time}>{formatSlotLabel(slot)}</span>
             </div>
             {teams.map((team) => {
               const active = isSlotActiveForTeam(slot, team.id, day, teamHoursMap);
